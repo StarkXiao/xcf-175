@@ -1,6 +1,6 @@
-import type { Skill } from '@/types';
+import type { SkillTemplate, SkillType } from '@/types';
 
-export const SKILL_TEMPLATES: Skill[] = [
+export const SKILL_TEMPLATES: SkillTemplate[] = [
   {
     id: 'skill_bite',
     name: '撕咬',
@@ -212,10 +212,10 @@ export const SKILL_TEMPLATES: Skill[] = [
   },
 ];
 
-export const getSkillTemplate = (id: string): Skill | undefined => {
+export const getSkillTemplate = (id: string): SkillTemplate | undefined => {
   return SKILL_TEMPLATES.find(s => s.id === id);
 };
 
-export const getSkillsByType = (type: Skill['type']): Skill[] => {
+export const getSkillsByType = (type: SkillType): SkillTemplate[] => {
   return SKILL_TEMPLATES.filter(s => s.type === type);
 };

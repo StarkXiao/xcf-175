@@ -1,11 +1,11 @@
 import { cn } from '@/lib/utils';
-import type { Part, PartSlot as PartSlotType } from '@/types';
+import type { Part, PartSlot as PartSlotType, PartTemplate } from '@/types';
 import { getRarityColor } from '@/utils/format';
 import { Plus } from 'lucide-react';
 
 interface PartSlotProps {
   slot: PartSlotType;
-  part?: Part | null;
+  part?: Part | PartTemplate | null;
   onClick?: () => void;
   onRemove?: () => void;
   selected?: boolean;

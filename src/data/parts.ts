@@ -1,6 +1,6 @@
-import type { Part } from '@/types';
+import type { PartTemplate, PartSlot, Rarity } from '@/types';
 
-export const PART_TEMPLATES: Part[] = [
+export const PART_TEMPLATES: PartTemplate[] = [
   {
     id: 'head_visor',
     name: '光学护目镜',
@@ -228,14 +228,14 @@ export const PART_TEMPLATES: Part[] = [
   },
 ];
 
-export const getPartTemplate = (id: string): Part | undefined => {
+export const getPartTemplate = (id: string): PartTemplate | undefined => {
   return PART_TEMPLATES.find(p => p.id === id);
 };
 
-export const getPartsBySlot = (slot: Part['slot']): Part[] => {
+export const getPartsBySlot = (slot: PartSlot): PartTemplate[] => {
   return PART_TEMPLATES.filter(p => p.slot === slot);
 };
 
-export const getPartsByRarity = (rarity: Part['rarity']): Part[] => {
+export const getPartsByRarity = (rarity: Rarity): PartTemplate[] => {
   return PART_TEMPLATES.filter(p => p.rarity === rarity);
 };

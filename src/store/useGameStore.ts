@@ -120,7 +120,7 @@ const createInitialParts = (): Part[] => {
   const parts: Part[] = [];
   const basicParts = PART_TEMPLATES.filter(p => p.rarity <= 2).slice(0, 3);
   basicParts.forEach(p => {
-    parts.push({ ...p, id: generateId('part') });
+    parts.push({ ...p, id: generateId('part'), templateId: p.id });
   });
   return parts;
 };
@@ -129,7 +129,7 @@ const createInitialSkills = (): Skill[] => {
   const skills: Skill[] = [];
   const basicSkills = SKILL_TEMPLATES.filter(s => s.type === 'attack' || s.type === 'heal').slice(0, 3);
   basicSkills.forEach(s => {
-    skills.push({ ...s, id: generateId('skill') });
+    skills.push({ ...s, id: generateId('skill'), templateId: s.id });
   });
   return skills;
 };
@@ -325,9 +325,9 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     if (existingIndex >= 0) {
       removedPart = newParts[existingIndex];
-      newParts[existingIndex] = { partId, slot };
+      newParts[existingIndex] = { partId: part.templateId, slot };
     } else {
-      newParts.push({ partId, slot });
+      newParts.push({ partId: part.templateId, slot });
     }
 
     set(state => ({
@@ -341,7 +341,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const origPart = getPartTemplate(removedPart.partId);
       if (origPart) {
         set(state => ({
-          ownedParts: [...state.ownedParts, { ...origPart, id: generateId('part') }],
+          ownedParts: [...state.ownedParts, { ...origPart, id: generateId('part'), templateId: origPart.id }],
         }));
       }
     }
@@ -370,7 +370,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     if (origPart) {
       set(state => ({
-        ownedParts: [...state.ownedParts, { ...origPart, id: generateId('part') }],
+        ownedParts: [...state.ownedParts, { ...origPart, id: generateId('part'), templateId: origPart.id }],
       }));
     }
 
@@ -385,12 +385,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     const animal = state.ownedAnimals.find(a => a.id === animalId);
     if (!animal) return false;
     if (animal.skills.length >= BATTLE_CONSTANTS.MAX_SKILLS_PER_ANIMAL) return false;
-    if (animal.skills.some(s => s.skillId === skillId)) return false;
+    if (animal.skills.some(s => s.skillId === skill.templateId)) return false;
 
     set(state => ({
       ownedAnimals: state.ownedAnimals.map(a =>
         a.id === animalId
-          ? { ...a, skills: [...a.skills, { skillId, level: 1 }] }
+          ? { ...a, skills: [...a.skills, { skillId: skill.templateId, level: 1 }] }
           : a
       ),
       ownedSkills: state.ownedSkills.filter(s => s.id !== skillId),
@@ -418,7 +418,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     if (origSkill) {
       set(state => ({
-        ownedSkills: [...state.ownedSkills, { ...origSkill, id: generateId('skill') }],
+        ownedSkills: [...state.ownedSkills, { ...origSkill, id: generateId('skill'), templateId: origSkill.id }],
       }));
     }
 
@@ -477,7 +477,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         pool = PART_TEMPLATES;
       }
       const template = pickRandom(pool);
-      const part: Part = { ...template, id: generateId('part') };
+      const part: Part = { ...template, id: generateId('part'), templateId: template.id };
       set(state => ({
         player: { ...state.player, coins: state.player.coins - GACHA_COSTS.part },
         ownedParts: [...state.ownedParts, part],
@@ -487,7 +487,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
 
     const template = pickRandom(pool);
-    const part: Part = { ...template, id: generateId('part') };
+    const part: Part = { ...template, id: generateId('part'), templateId: template.id };
     const isNew = !state.ownedParts.some(p => p.id === template.id);
 
     set(state => ({
@@ -512,7 +512,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
     if (pool.length === 0) {
       const template = pickRandom(SKILL_TEMPLATES);
-      const skill: Skill = { ...template, id: generateId('skill') };
+      const skill: Skill = { ...template, id: generateId('skill'), templateId: template.id };
       set(state => ({
         player: { ...state.player, coins: state.player.coins - GACHA_COSTS.skill },
         ownedSkills: [...state.ownedSkills, skill],
@@ -522,7 +522,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
 
     const template = pickRandom(pool);
-    const skill: Skill = { ...template, id: generateId('skill') };
+    const skill: Skill = { ...template, id: generateId('skill'), templateId: template.id };
     const isNew = !state.ownedSkills.some(s => s.id === template.id);
 
     set(state => ({

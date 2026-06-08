@@ -1,9 +1,9 @@
 import { cn } from '@/lib/utils';
-import type { Skill, BattleSkill, EquippedSkill } from '@/types';
+import type { Skill, BattleSkill, EquippedSkill, SkillTemplate } from '@/types';
 import { getSkillTemplate } from '@/data/skills';
 
 interface SkillIconProps {
-  skill: Skill | BattleSkill | EquippedSkill | string;
+  skill: Skill | SkillTemplate | BattleSkill | EquippedSkill | string;
   level?: number;
   cooldown?: number;
   maxCooldown?: number;
@@ -27,7 +27,7 @@ export const SkillIcon = ({
   showName = false,
   className,
 }: SkillIconProps) => {
-  let template: Skill | null = null;
+  let template: SkillTemplate | null = null;
 
   if (typeof skill === 'string') {
     template = getSkillTemplate(skill) || null;

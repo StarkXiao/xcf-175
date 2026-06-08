@@ -21,6 +21,43 @@ export interface AnimalTemplate {
   rarity: Rarity;
 }
 
+export interface PartTemplate {
+  id: string;
+  name: string;
+  description?: string;
+  slot: PartSlot;
+  rarity: Rarity;
+  stats: {
+    hp?: number;
+    atk?: number;
+    def?: number;
+    spd?: number;
+  };
+  emoji: string;
+  price: number;
+}
+
+export interface SkillTemplate {
+  id: string;
+  name: string;
+  description: string;
+  type: SkillType;
+  damage: number;
+  cooldown: number;
+  cost: number;
+  emoji: string;
+  rarity: Rarity;
+  effect?: {
+    stat?: 'atk' | 'def' | 'spd';
+    value?: number;
+    duration?: number;
+    healPercent?: number;
+    aoe?: boolean;
+  };
+  target?: 'single' | 'all' | 'self' | 'random';
+  chance?: number;
+}
+
 export interface OpponentTemplate {
   id: string;
   name: string;
@@ -57,6 +94,7 @@ export interface Animal {
 
 export interface Part {
   id: string;
+  templateId: string;
   name: string;
   description?: string;
   slot: PartSlot;
@@ -73,6 +111,7 @@ export interface Part {
 
 export interface Skill {
   id: string;
+  templateId: string;
   name: string;
   description: string;
   type: SkillType;
