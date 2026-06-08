@@ -470,10 +470,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
 
     const rarity = rollRarity(GACHA_RATES.part);
-    const pool = PART_TEMPLATES.filter(p => p.rarity === rarity);
+    let pool = PART_TEMPLATES.filter(p => p.rarity === rarity);
     if (pool.length === 0) {
-      const fallbackPool = PART_TEMPLATES.filter(p => p.rarity <= rarity);
-      const template = pickRandom(fallbackPool);
+      pool = PART_TEMPLATES.filter(p => p.rarity <= rarity);
+      if (pool.length === 0) {
+        pool = PART_TEMPLATES;
+      }
+      const template = pickRandom(pool);
       const part: Part = { ...template, id: generateId('part') };
       set(state => ({
         player: { ...state.player, coins: state.player.coins - GACHA_COSTS.part },
@@ -563,6 +566,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       battleLog: result.battleLog,
       playerUnits: result.playerUnits,
       enemyUnits: result.enemyUnits,
+      initialPlayerUnits: result.initialPlayerUnits,
+      initialEnemyUnits: result.initialEnemyUnits,
     };
 
     set(prev => ({

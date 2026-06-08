@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { Swords, Plus, ArrowLeft, Info } from 'lucide-react';
 import { NeonButton } from '@/components/NeonButton';
@@ -32,6 +32,15 @@ export default function Lineup() {
   const [selectedAnimal, setSelectedAnimal] = useState<Animal | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<PartSlotType | null>(null);
   const [showPartPicker, setShowPartPicker] = useState(false);
+
+  useEffect(() => {
+    if (selectedAnimal) {
+      const updated = ownedAnimals.find(a => a.id === selectedAnimal.id);
+      if (updated && JSON.stringify(updated) !== JSON.stringify(selectedAnimal)) {
+        setSelectedAnimal(updated);
+      }
+    }
+  }, [ownedAnimals, selectedAnimal]);
 
   const partSlots: PartSlotType[] = ['head', 'body', 'limbs', 'weapon', 'core', 'special'];
 

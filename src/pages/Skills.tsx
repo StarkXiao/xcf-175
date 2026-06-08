@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { BookOpen, Plus, ArrowLeft, X } from 'lucide-react';
 import { NeonButton } from '@/components/NeonButton';
@@ -19,6 +19,15 @@ export default function Skills() {
 
   const [selectedAnimal, setSelectedAnimal] = useState<Animal | null>(null);
   const [showSkillPicker, setShowSkillPicker] = useState(false);
+
+  useEffect(() => {
+    if (selectedAnimal) {
+      const updated = ownedAnimals.find(a => a.id === selectedAnimal.id);
+      if (updated && JSON.stringify(updated) !== JSON.stringify(selectedAnimal)) {
+        setSelectedAnimal(updated);
+      }
+    }
+  }, [ownedAnimals, selectedAnimal]);
 
   const availableSkills = ownedSkills.filter(
     skill => !selectedAnimal?.skills.some(s => s.skillId === skill.id)

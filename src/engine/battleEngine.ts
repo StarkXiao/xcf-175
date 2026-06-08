@@ -418,6 +418,8 @@ export const simulateFullBattle = (
 ): {
   playerUnits: BattleUnit[];
   enemyUnits: BattleUnit[];
+  initialPlayerUnits: BattleUnit[];
+  initialEnemyUnits: BattleUnit[];
   battleLog: BattleLogEntry[];
   isWin: boolean;
   reward: number;
@@ -436,6 +438,9 @@ export const simulateFullBattle = (
   const enemyUnits = enemyAnimals.map((animal, i) =>
     createBattleUnit(animal, 'enemy', i)
   );
+
+  const initialPlayerUnits = JSON.parse(JSON.stringify(playerUnits));
+  const initialEnemyUnits = JSON.parse(JSON.stringify(enemyUnits));
 
   const fullBattleLog: BattleLogEntry[] = [];
   let turn = 0;
@@ -488,6 +493,8 @@ export const simulateFullBattle = (
   return {
     playerUnits,
     enemyUnits,
+    initialPlayerUnits,
+    initialEnemyUnits,
     battleLog: fullBattleLog,
     isWin,
     reward,

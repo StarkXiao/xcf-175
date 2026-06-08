@@ -162,6 +162,8 @@ export interface BattleRecord {
   battleLog: BattleLogEntry[];
   playerUnits: BattleUnit[];
   enemyUnits: BattleUnit[];
+  initialPlayerUnits: BattleUnit[];
+  initialEnemyUnits: BattleUnit[];
 }
 
 export interface Particle {

@@ -37,9 +37,16 @@ export const useReplayStore = create<ReplayState>((set, get) => ({
   hurtUnitId: null,
 
   loadReplay: (record: BattleRecord) => {
+    const playerUnits = record.initialPlayerUnits && record.initialPlayerUnits.length > 0
+      ? JSON.parse(JSON.stringify(record.initialPlayerUnits))
+      : JSON.parse(JSON.stringify(record.playerUnits));
+    const enemyUnits = record.initialEnemyUnits && record.initialEnemyUnits.length > 0
+      ? JSON.parse(JSON.stringify(record.initialEnemyUnits))
+      : JSON.parse(JSON.stringify(record.enemyUnits));
+    
     set({
-      playerUnits: JSON.parse(JSON.stringify(record.playerUnits)),
-      enemyUnits: JSON.parse(JSON.stringify(record.enemyUnits)),
+      playerUnits,
+      enemyUnits,
       battleLog: record.battleLog,
       currentLogIndex: -1,
       isPlaying: false,
@@ -107,8 +114,15 @@ export const useReplayStore = create<ReplayState>((set, get) => ({
 
     const clampedIndex = Math.max(-1, Math.min(state.battleLog.length - 1, index));
 
-    let playerUnits = JSON.parse(JSON.stringify(state.battleRecord.playerUnits));
-    let enemyUnits = JSON.parse(JSON.stringify(state.battleRecord.enemyUnits));
+    const initialPlayerUnits = state.battleRecord.initialPlayerUnits && state.battleRecord.initialPlayerUnits.length > 0
+      ? state.battleRecord.initialPlayerUnits
+      : state.battleRecord.playerUnits;
+    const initialEnemyUnits = state.battleRecord.initialEnemyUnits && state.battleRecord.initialEnemyUnits.length > 0
+      ? state.battleRecord.initialEnemyUnits
+      : state.battleRecord.enemyUnits;
+
+    let playerUnits = JSON.parse(JSON.stringify(initialPlayerUnits));
+    let enemyUnits = JSON.parse(JSON.stringify(initialEnemyUnits));
 
     for (let i = 0; i <= clampedIndex; i++) {
       const log = state.battleLog[i];

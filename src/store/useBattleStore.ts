@@ -39,9 +39,16 @@ export const useBattleStore = create<BattleState>((set, get) => ({
   screenShake: 0,
 
   initBattle: (record: BattleRecord) => {
+    const playerUnits = record.initialPlayerUnits && record.initialPlayerUnits.length > 0
+      ? JSON.parse(JSON.stringify(record.initialPlayerUnits))
+      : JSON.parse(JSON.stringify(record.playerUnits));
+    const enemyUnits = record.initialEnemyUnits && record.initialEnemyUnits.length > 0
+      ? JSON.parse(JSON.stringify(record.initialEnemyUnits))
+      : JSON.parse(JSON.stringify(record.enemyUnits));
+    
     set({
-      playerUnits: JSON.parse(JSON.stringify(record.playerUnits)),
-      enemyUnits: JSON.parse(JSON.stringify(record.enemyUnits)),
+      playerUnits,
+      enemyUnits,
       battleLog: record.battleLog,
       currentLogIndex: -1,
       isPlaying: true,
