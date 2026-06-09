@@ -92,6 +92,7 @@ interface GameState {
   equipSkill: (animalId: string, skillId: string) => boolean;
   unequipSkill: (animalId: string, index: number) => void;
   upgradeSkill: (animalId: string, skillIndex: number) => boolean;
+  chooseBranch: (animalId: string, skillIndex: number, branchId: string) => boolean;
 
   addCoins: (amount: number) => void;
   spendCoins: (amount: number) => boolean;
@@ -417,7 +418,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   saveGame: (force: boolean = false) => {
     const state = get();
     const saveData: SaveData = {
-      version: 5,
+      version: 6,
       timestamp: Date.now(),
       player: state.player,
       ownedAnimals: state.ownedAnimals,
@@ -712,6 +713,41 @@ export const useGameStore = create<GameState>((set, get) => ({
               ...a,
               skills: a.skills.map((s, i) =>
                 i === skillIndex ? { ...s, level: s.level + 1 } : s
+              ),
+            }
+          : a
+      ),
+    }));
+    get().saveGame();
+    return true;
+  },
+
+  chooseBranch: (animalId: string, skillIndex: number, branchId: string): boolean => {
+    const state = get();
+    const animal = state.ownedAnimals.find(a => a.id === animalId);
+    if (!animal) return false;
+    if (skillIndex < 0 || skillIndex >= animal.skills.length) return false;
+
+    const equipped = animal.skills[skillIndex];
+    const template = getSkillTemplate(equipped.skillId);
+    if (!template || !template.branches) return false;
+
+    const branch = template.branches.find(b => b.id === branchId);
+    if (!branch) return false;
+
+    if (equipped.level < branch.requiredLevel) return false;
+
+    const cost = branch.requiredLevel * 100;
+    if (state.player.coins < cost) return false;
+
+    set(state => ({
+      player: { ...state.player, coins: state.player.coins - cost },
+      ownedAnimals: state.ownedAnimals.map(a =>
+        a.id === animalId
+          ? {
+              ...a,
+              skills: a.skills.map((s, i) =>
+                i === skillIndex ? { ...s, branchId } : s
               ),
             }
           : a

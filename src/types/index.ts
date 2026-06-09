@@ -48,7 +48,73 @@ export interface Material {
 
 export type PartSlot = 'head' | 'body' | 'limbs' | 'weapon' | 'core' | 'special';
 
-export type SkillType = 'attack' | 'heal' | 'buff' | 'debuff' | 'special';
+export type SkillType = 'attack' | 'heal' | 'buff' | 'debuff' | 'special' | 'passive';
+
+export type PassiveTrigger = 'onAttack' | 'onHit' | 'onKill' | 'onTurnStart' | 'onTurnEnd' | 'onHpBelow' | 'onAllyHit' | 'onCrit' | 'onStatusApply';
+
+export type ComboCondition = 'sameElement' | 'sameType' | 'specificSkill' | 'consecutiveUse';
+
+export interface SkillBranch {
+  id: string;
+  name: string;
+  description: string;
+  emoji: string;
+  requiredLevel: number;
+  damageModifier?: number;
+  cooldownModifier?: number;
+  effectOverride?: {
+    stat?: 'atk' | 'def' | 'spd';
+    value?: number;
+    duration?: number;
+    healPercent?: number;
+    aoe?: boolean;
+  };
+  statusEffectOverride?: {
+    type: StatusEffectType;
+    chance: number;
+    duration: number;
+    damage?: number;
+  };
+  passive?: PassiveEffect;
+}
+
+export interface PassiveEffect {
+  id: string;
+  name: string;
+  description: string;
+  emoji: string;
+  trigger: PassiveTrigger;
+  triggerChance?: number;
+  hpThreshold?: number;
+  statBonus?: { stat: 'atk' | 'def' | 'spd'; value: number };
+  damageBonus?: number;
+  healPercent?: number;
+  statusEffectApply?: {
+    type: StatusEffectType;
+    chance: number;
+    duration: number;
+    damage?: number;
+  };
+  extraTurnChance?: number;
+  critBonus?: number;
+}
+
+export interface ComboTrigger {
+  id: string;
+  name: string;
+  description: string;
+  emoji: string;
+  condition: ComboCondition;
+  requiredSkillIds?: string[];
+  bonusDamage: number;
+  bonusDamagePerHit?: number;
+  triggerStatusEffect?: {
+    type: StatusEffectType;
+    chance: number;
+    duration: number;
+    damage?: number;
+  };
+}
 
 export type BattleSide = 'player' | 'enemy';
 
@@ -56,7 +122,7 @@ export type Element = 'fire' | 'ice' | 'thunder' | 'nature' | 'dark';
 
 export type StatusEffectType = 'poison' | 'burn' | 'freeze' | 'paralysis' | 'bleed';
 
-export type BattleLogType = 'damage' | 'crit' | 'heal' | 'skill' | 'buff' | 'debuff' | 'death' | 'turnStart' | 'battleEnd' | 'info' | 'attack' | 'victory' | 'elementAdvantage' | 'statusTick' | 'statusApply' | 'combo';
+export type BattleLogType = 'damage' | 'crit' | 'heal' | 'skill' | 'buff' | 'debuff' | 'death' | 'turnStart' | 'battleEnd' | 'info' | 'attack' | 'victory' | 'elementAdvantage' | 'statusTick' | 'statusApply' | 'combo' | 'passive' | 'comboTrigger' | 'branchActivate';
 
 export interface AnimalTemplate {
   id: string;
@@ -114,6 +180,9 @@ export interface SkillTemplate {
   };
   target?: 'single' | 'all' | 'self' | 'random';
   chance?: number;
+  branches?: SkillBranch[];
+  passive?: PassiveEffect;
+  comboTriggers?: ComboTrigger[];
 }
 
 export interface OpponentTemplate {
@@ -136,6 +205,7 @@ export interface EquippedSkill {
   skillId: string;
   level: number;
   currentCooldown?: number;
+  branchId?: string;
 }
 
 export interface Animal {
@@ -196,6 +266,9 @@ export interface Skill {
   };
   target?: 'single' | 'all' | 'self' | 'random';
   chance?: number;
+  branches?: SkillBranch[];
+  passive?: PassiveEffect;
+  comboTriggers?: ComboTrigger[];
 }
 
 export interface BattleSkill {
@@ -220,6 +293,9 @@ export interface BattleSkill {
     duration: number;
     damage?: number;
   };
+  branchId?: string;
+  passive?: PassiveEffect;
+  comboTriggers?: ComboTrigger[];
 }
 
 export interface BattleBuff {
@@ -256,6 +332,8 @@ export interface BattleUnit {
   statusEffects: StatusEffect[];
   comboCount: number;
   isSkipTurn: boolean;
+  passives: PassiveEffect[];
+  activatedCombos: string[];
 }
 
 export interface StatusEffectPayload {
@@ -300,6 +378,12 @@ export interface BattleLogEntry {
   comboMultiplier?: number;
   skillCooldown?: number;
   isSkipTurn?: boolean;
+  passiveId?: string;
+  passiveName?: string;
+  comboTriggerId?: string;
+  comboTriggerName?: string;
+  branchId?: string;
+  branchName?: string;
 }
 
 export interface BattleRecord {
