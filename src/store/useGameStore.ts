@@ -8,6 +8,7 @@ import type {
   EquippedPart,
   Rarity,
   PartSlot,
+  PartQuality,
   LineupConfig,
   FormationPosition,
   TargetStrategy,
@@ -37,7 +38,7 @@ import {
 import { GACHA_RATES, GACHA_COSTS, BATTLE_CONSTANTS, NEWBIE_GIFT, PITY_CONFIG, LIMITED_POOL } from '@/engine/constants';
 import { simulateFullBattle } from '@/engine/battleEngine';
 import { getAnimalTemplate } from '@/data/animals';
-import { getPartTemplate } from '@/data/parts';
+import { getPartTemplate, rollPartQuality, QUALITY_REFINE_COST } from '@/data/parts';
 import { getSkillTemplate } from '@/data/skills';
 import { MATERIAL_TEMPLATES, getMaterialTemplate } from '@/data/materials';
 import { getStarUpCost, getBreakthroughCost, getSkillSlotsForStar, getSkillLevelCapForBreakthrough, BATTLE_MATERIAL_DROPS } from '@/data/ascendConfig';
@@ -88,6 +89,7 @@ interface GameState {
 
   equipPart: (animalId: string, partId: string, slot: PartSlot) => boolean;
   unequipPart: (animalId: string, slot: PartSlot) => void;
+  refinePart: (partId: string) => boolean;
 
   equipSkill: (animalId: string, skillId: string) => boolean;
   unequipSkill: (animalId: string, index: number) => void;
@@ -161,7 +163,7 @@ const createInitialParts = (): Part[] => {
   const parts: Part[] = [];
   const basicParts = PART_TEMPLATES.filter(p => p.rarity <= 2).slice(0, 3);
   basicParts.forEach(p => {
-    parts.push({ ...p, id: generateId('part'), templateId: p.id });
+    parts.push({ ...p, id: generateId('part'), templateId: p.id, quality: 1 as PartQuality, setId: p.setId });
   });
   return parts;
 };
@@ -359,7 +361,12 @@ export const useGameStore = create<GameState>((set, get) => ({
             return { ...ep, partId: match.id };
           }
         }
-        return ep;
+        const template = getPartTemplate(ep.partId);
+        return {
+          ...ep,
+          quality: ep.quality || 1 as PartQuality,
+          setId: ep.setId || template?.setId,
+        };
       });
       const skills = animal.skills.map(es => {
         if (!getSkillTemplate(es.skillId)) {
@@ -381,6 +388,15 @@ export const useGameStore = create<GameState>((set, get) => ({
       return patched;
     });
 
+    const repairedParts = data.ownedParts.map(p => {
+      const template = getPartTemplate(p.templateId);
+      return {
+        ...p,
+        quality: p.quality || 1 as PartQuality,
+        setId: p.setId || template?.setId,
+      };
+    });
+
     const pityState: PityState = data.pityState || { ...DEFAULT_PITY_STATE };
     if (!pityState.limited) {
       pityState.limited = { pullsSinceR4: 0, pullsSinceR5: 0, guaranteedFeatured: false };
@@ -389,7 +405,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({
       player: data.player,
       ownedAnimals: repairedAnimals,
-      ownedParts: data.ownedParts,
+      ownedParts: repairedParts,
       ownedSkills: data.ownedSkills,
       ownedMaterials: data.ownedMaterials || [],
       codex: data.codex || [],
@@ -418,7 +434,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   saveGame: (force: boolean = false) => {
     const state = get();
     const saveData: SaveData = {
-      version: 6,
+      version: 7,
       timestamp: Date.now(),
       player: state.player,
       ownedAnimals: state.ownedAnimals,
@@ -589,11 +605,18 @@ export const useGameStore = create<GameState>((set, get) => ({
     const newParts = [...animal.parts];
     let removedPart: EquippedPart | null = null;
 
+    const equippedData: EquippedPart = {
+      partId: part.templateId,
+      slot,
+      quality: part.quality,
+      setId: part.setId,
+    };
+
     if (existingIndex >= 0) {
       removedPart = newParts[existingIndex];
-      newParts[existingIndex] = { partId: part.templateId, slot };
+      newParts[existingIndex] = equippedData;
     } else {
-      newParts.push({ partId: part.templateId, slot });
+      newParts.push(equippedData);
     }
 
     set(state => ({
@@ -606,8 +629,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (removedPart) {
       const origPart = getPartTemplate(removedPart.partId);
       if (origPart) {
+        const removedQuality = removedPart.quality || 1;
         set(state => ({
-          ownedParts: [...state.ownedParts, { ...origPart, id: generateId('part'), templateId: origPart.id }],
+          ownedParts: [...state.ownedParts, { ...origPart, id: generateId('part'), templateId: origPart.id, quality: removedQuality, setId: origPart.setId || removedPart.setId }],
         }));
       }
     }
@@ -625,6 +649,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!equipped) return;
 
     const origPart = getPartTemplate(equipped.partId);
+    const equippedQuality = equipped.quality || 1;
+    const equippedSetId = equipped.setId || origPart?.setId;
 
     set(state => ({
       ownedAnimals: state.ownedAnimals.map(a =>
@@ -636,11 +662,54 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     if (origPart) {
       set(state => ({
-        ownedParts: [...state.ownedParts, { ...origPart, id: generateId('part'), templateId: origPart.id }],
+        ownedParts: [...state.ownedParts, { ...origPart, id: generateId('part'), templateId: origPart.id, quality: equippedQuality, setId: equippedSetId }],
       }));
     }
 
     get().saveGame();
+  },
+
+  refinePart: (partId: string): boolean => {
+    const state = get();
+    const part = state.ownedParts.find(p => p.id === partId);
+    if (!part) return false;
+
+    const currentQuality = part.quality;
+    if (currentQuality >= 5) return false;
+
+    const nextQuality = (currentQuality + 1) as PartQuality;
+    const cost = QUALITY_REFINE_COST[nextQuality];
+    if (!cost || cost <= 0) return false;
+    if (state.player.coins < cost) return false;
+
+    set(state => ({
+      player: { ...state.player, coins: state.player.coins - cost },
+      ownedParts: state.ownedParts.map(p =>
+        p.id === partId ? { ...p, quality: nextQuality } : p
+      ),
+    }));
+
+    const animalUsing = state.ownedAnimals.find(a =>
+      a.parts.some(ep => ep.partId === part.templateId && ep.quality === currentQuality)
+    );
+    if (animalUsing) {
+      set(state => ({
+        ownedAnimals: state.ownedAnimals.map(a => {
+          if (a.id !== animalUsing.id) return a;
+          return {
+            ...a,
+            parts: a.parts.map(ep =>
+              ep.partId === part.templateId && ep.quality === currentQuality
+                ? { ...ep, quality: nextQuality }
+                : ep
+            ),
+          };
+        }),
+      }));
+    }
+
+    get().saveGame();
+    return true;
   },
 
   equipSkill: (animalId: string, skillId: string): boolean => {
@@ -833,7 +902,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const rolledRarity = rollRarityWithPity(GACHA_RATES.part, pity.pullsSinceR4, pity.pullsSinceR5);
     const { template, actualRarity } = pickPartTemplate(rolledRarity);
     const isPity = actualRarity >= 4 && (pity.pullsSinceR4 >= PITY_CONFIG.hardPityR4 - 1 || pity.pullsSinceR5 >= PITY_CONFIG.hardPityR5 - 1);
-    const part: Part = { ...template, id: generateId('part'), templateId: template.id };
+    const part: Part = { ...template, id: generateId('part'), templateId: template.id, quality: rollPartQuality(actualRarity), setId: template.setId };
     const isNew = !state.ownedParts.some(p => p.templateId === template.id);
 
     const gachaRecord = recordGacha('part', 'part', template.id, template.name, template.emoji, actualRarity, isNew);
@@ -933,7 +1002,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         } else if (itemType === 'part') {
           const template = getPartTemplate(templateId)!;
           actualRarity = template.rarity;
-          item = { ...template, id: generateId('part'), templateId: template.id };
+          item = { ...template, id: generateId('part'), templateId: template.id, quality: rollPartQuality(actualRarity), setId: template.setId };
           itemName = template.name;
           itemEmoji = template.emoji;
         } else {
@@ -958,7 +1027,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           const { template, actualRarity: aR } = pickPartTemplate(rolledRarity);
           actualRarity = aR;
           templateId = template.id;
-          item = { ...template, id: generateId('part'), templateId: template.id };
+          item = { ...template, id: generateId('part'), templateId: template.id, quality: rollPartQuality(actualRarity), setId: template.setId };
           itemName = template.name;
           itemEmoji = template.emoji;
         } else {
@@ -986,7 +1055,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         const { template, actualRarity: aR } = pickPartTemplate(rolledRarity);
         actualRarity = aR;
         templateId = template.id;
-        item = { ...template, id: generateId('part'), templateId: template.id };
+        item = { ...template, id: generateId('part'), templateId: template.id, quality: rollPartQuality(actualRarity), setId: template.setId };
         itemName = template.name;
         itemEmoji = template.emoji;
       } else {
@@ -1092,7 +1161,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           const rolledRarity = rollRarityWithPity(GACHA_RATES.part, pity.pullsSinceR4, pity.pullsSinceR5);
           const { template, actualRarity } = pickPartTemplate(rolledRarity);
           const isPity = actualRarity >= 4 && (pity.pullsSinceR4 >= PITY_CONFIG.hardPityR4 - 1 || pity.pullsSinceR5 >= PITY_CONFIG.hardPityR5 - 1);
-          const part: Part = { ...template, id: generateId('part'), templateId: template.id };
+          const part: Part = { ...template, id: generateId('part'), templateId: template.id, quality: rollPartQuality(actualRarity), setId: template.setId };
           const isNew = !currentState.ownedParts.some(p => p.templateId === template.id) && !newParts.some(p => p.templateId === template.id);
           newParts.push(part);
           newRecords.push(recordGacha('part', 'part', template.id, template.name, template.emoji, actualRarity, isNew));
@@ -1163,7 +1232,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               } else if (itemType === 'part') {
                 const template = getPartTemplate(templateId)!;
                 actualRarity = template.rarity;
-                item = { ...template, id: generateId('part'), templateId: template.id };
+                item = { ...template, id: generateId('part'), templateId: template.id, quality: rollPartQuality(actualRarity), setId: template.setId };
                 itemName = template.name; itemEmoji = template.emoji;
               } else {
                 const template = getSkillTemplate(templateId)!;
@@ -1183,7 +1252,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                 itemType = 'part';
                 const { template, actualRarity: aR } = pickPartTemplate(rolledRarity);
                 actualRarity = aR; templateId = template.id;
-                item = { ...template, id: generateId('part'), templateId: template.id };
+                item = { ...template, id: generateId('part'), templateId: template.id, quality: rollPartQuality(actualRarity), setId: template.setId };
                 itemName = template.name; itemEmoji = template.emoji;
               } else {
                 itemType = 'skill';
@@ -1205,7 +1274,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               itemType = 'part';
               const { template, actualRarity: aR } = pickPartTemplate(rolledRarity);
               actualRarity = aR; templateId = template.id;
-              item = { ...template, id: generateId('part'), templateId: template.id };
+              item = { ...template, id: generateId('part'), templateId: template.id, quality: rollPartQuality(actualRarity), setId: template.setId };
               itemName = template.name; itemEmoji = template.emoji;
             } else {
               itemType = 'skill';

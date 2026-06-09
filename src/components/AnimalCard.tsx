@@ -6,7 +6,7 @@ import { calculateAnimalStats } from '@/engine/battleEngine';
 import { ELEMENT_EMOJIS, ELEMENT_COLORS, ELEMENT_NAMES, STAR_LEVEL_NAMES, BREAKTHROUGH_TIER_NAMES } from '@/engine/constants';
 import { StatBar } from './StatBar';
 import { SkillIcon } from './SkillIcon';
-import { getPartTemplate } from '@/data/parts';
+import { getPartTemplate, QUALITY_NAMES, QUALITY_COLORS, getPartSet, getActiveSetBonuses } from '@/data/parts';
 import { Plus, X, ArrowUp } from 'lucide-react';
 import { NeonButton } from './NeonButton';
 import { useGameStore } from '@/store/useGameStore';
@@ -53,10 +53,13 @@ export const AnimalCard = ({
   const equippedParts = partSlots.map(slot => {
     const equipped = animal.parts.find(p => p.slot === slot);
     if (equipped) {
-      return getPartTemplate(equipped.partId);
+      const template = getPartTemplate(equipped.partId);
+      return template ? { ...template, quality: equipped.quality || 1, setId: template.setId || equipped.setId } : null;
     }
     return null;
   });
+
+  const activeSetBonuses = getActiveSetBonuses(animal.parts);
 
   return (
     <div
@@ -162,22 +165,64 @@ export const AnimalCard = ({
           <div className="grid grid-cols-6 gap-1">
             {partSlots.map((slot, i) => {
               const part = equippedParts[i];
+              const partSet = part?.setId ? getPartSet(part.setId) : null;
               return (
                 <div
                   key={slot}
                   className={cn(
-                    'aspect-square rounded border flex items-center justify-center text-lg',
+                    'aspect-square rounded border flex items-center justify-center text-lg relative',
                     part
                       ? 'border-cyber-purple bg-cyber-purple/10'
                       : 'border-gray-700 bg-gray-800/50 text-gray-600'
                   )}
-                  title={part ? part.name : slot}
+                  style={partSet ? { borderColor: `${partSet.color}60`, boxShadow: `0 0 6px ${partSet.color}30` } : undefined}
+                  title={part ? `${part.name}${part.quality > 1 ? ` [${QUALITY_NAMES[part.quality]}]` : ''}${partSet ? ` (${partSet.name}套装)` : ''}` : slot}
                 >
                   {part ? part.emoji : <Plus className="w-3 h-3" />}
+                  {part && part.quality > 1 && (
+                    <span className="absolute -top-1 -right-1 text-[8px] font-cyber font-bold leading-none px-0.5 rounded"
+                      style={{ color: QUALITY_COLORS[part.quality], background: `${QUALITY_COLORS[part.quality]}25` }}>
+                      {QUALITY_NAMES[part.quality].charAt(0)}
+                    </span>
+                  )}
+                  {partSet && (
+                    <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 text-[8px] leading-none">
+                      {partSet.emoji}
+                    </span>
+                  )}
                 </div>
               );
             })}
           </div>
+          {activeSetBonuses.length > 0 && (
+            <div className="mt-2 space-y-1">
+              {(() => {
+                const grouped = new Map<string, typeof activeSetBonuses>();
+                for (const entry of activeSetBonuses) {
+                  const existing = grouped.get(entry.setId) || [];
+                  existing.push(entry);
+                  grouped.set(entry.setId, existing);
+                }
+                return Array.from(grouped.entries()).map(([setId, entries]) => {
+                  const first = entries[0];
+                  return (
+                    <div key={setId} className="flex items-center gap-1.5 px-2 py-1 rounded"
+                      style={{ background: `${first.color}10`, border: `1px solid ${first.color}25` }}>
+                      <span className="text-xs">{first.emoji}</span>
+                      <span className="text-[10px] font-cyber" style={{ color: first.color }}>
+                        {first.setName}
+                      </span>
+                      {entries.map((e, i) => (
+                        <span key={i} className="text-[10px]" style={{ color: `${first.color}aa` }}>
+                          {e.bonus.pieces}件
+                        </span>
+                      ))}
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+          )}
         </div>
       )}
 

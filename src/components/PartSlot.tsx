@@ -1,13 +1,15 @@
 import { cn } from '@/lib/utils';
-import type { Part, PartSlot as PartSlotType, PartTemplate } from '@/types';
+import type { Part, PartSlot as PartSlotType, PartTemplate, PartQuality } from '@/types';
 import { getRarityColor } from '@/utils/format';
-import { Plus } from 'lucide-react';
+import { QUALITY_NAMES, QUALITY_COLORS, getPartSet } from '@/data/parts';
+import { Plus, Diamond } from 'lucide-react';
 
 interface PartSlotProps {
   slot: PartSlotType;
   part?: Part | PartTemplate | null;
   onClick?: () => void;
   onRemove?: () => void;
+  onRefine?: () => void;
   selected?: boolean;
   disabled?: boolean;
   className?: string;
@@ -31,16 +33,38 @@ const slotEmojis: Record<PartSlotType, string> = {
   special: '✨',
 };
 
+const getQualityBadge = (quality: PartQuality) => {
+  const color = QUALITY_COLORS[quality];
+  const name = QUALITY_NAMES[quality];
+  if (quality <= 1) return null;
+  return (
+    <div
+      className="absolute -bottom-1 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded text-[9px] font-bold whitespace-nowrap"
+      style={{
+        background: `${color}20`,
+        color,
+        border: `1px solid ${color}60`,
+      }}
+    >
+      {name}
+    </div>
+  );
+};
+
 export const PartSlot = ({
   slot,
   part,
   onClick,
   onRemove,
+  onRefine,
   selected = false,
   disabled = false,
   className,
 }: PartSlotProps) => {
   const rarityColor = part ? getRarityColor(part.rarity) : '#4b5563';
+  const quality = 'quality' in (part || {}) ? (part as Part).quality : 1;
+  const setId = part?.setId || ('setId' in (part || {}) ? (part as PartTemplate).setId : undefined);
+  const setConfig = setId ? getPartSet(setId) : undefined;
 
   return (
     <div className={cn('relative', className)}>
@@ -57,7 +81,7 @@ export const PartSlot = ({
         )}
         style={{
           borderColor: part ? `${rarityColor}80` : '#374151',
-          boxShadow: part ? `0 0 15px ${rarityColor}30` : 'none',
+          boxShadow: part ? `0 0 15px ${rarityColor}30${setConfig ? `, 0 0 8px ${setConfig.color}20` : ''}` : 'none',
         }}
       >
         {part ? (
@@ -79,6 +103,23 @@ export const PartSlot = ({
         {slotNames[slot]}
       </div>
 
+      {part && quality > 1 && getQualityBadge(quality)}
+
+      {setConfig && (
+        <div
+          className="absolute -top-2 -left-1 w-5 h-5 rounded-full flex items-center justify-center text-xs"
+          style={{
+            background: `${setConfig.color}30`,
+            border: `1.5px solid ${setConfig.color}`,
+            color: setConfig.color,
+            fontSize: '10px',
+          }}
+          title={`${setConfig.name}套装`}
+        >
+          {setConfig.emoji}
+        </div>
+      )}
+
       {part && onRemove && (
         <button
           onClick={(e) => {
@@ -88,6 +129,23 @@ export const PartSlot = ({
           className="absolute -top-2 -right-2 w-5 h-5 bg-cyber-red rounded-full flex items-center justify-center text-white text-xs hover:bg-cyber-red/80 transition-colors z-10"
         >
           ×
+        </button>
+      )}
+
+      {part && onRefine && quality < 5 && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onRefine();
+          }}
+          className="absolute -bottom-2 -right-2 w-5 h-5 rounded-full flex items-center justify-center z-10 hover:scale-110 transition-transform"
+          style={{
+            background: `${QUALITY_COLORS[(quality + 1) as PartQuality]}30`,
+            border: `1.5px solid ${QUALITY_COLORS[(quality + 1) as PartQuality]}`,
+          }}
+          title={`改造为${QUALITY_NAMES[(quality + 1) as PartQuality]}`}
+        >
+          <Diamond className="w-3 h-3" style={{ color: QUALITY_COLORS[(quality + 1) as PartQuality] }} />
         </button>
       )}
     </div>

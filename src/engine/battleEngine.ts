@@ -19,7 +19,7 @@ import type {
 } from '@/types';
 import { getAnimalTemplate } from '@/data/animals';
 import { getSkillTemplate } from '@/data/skills';
-import { getPartTemplate } from '@/data/parts';
+import { getPartTemplate, QUALITY_MULTIPLIER, computeSetBonusStats, getActiveSetBonuses } from '@/data/parts';
 import { getRandomOpponent } from '@/data/opponents';
 import { generateId } from '@/utils/id';
 import { randomInt, pickRandom, chance } from '@/utils/random';
@@ -83,12 +83,20 @@ export const calculateAnimalStats = (animal: Animal): {
   animal.parts.forEach(ep => {
     const part = getPartTemplate(ep.partId);
     if (part) {
-      hp += part.stats.hp || 0;
-      atk += part.stats.atk || 0;
-      def += part.stats.def || 0;
-      spd += part.stats.spd || 0;
+      const quality = ep.quality || 1;
+      const qMul = QUALITY_MULTIPLIER[quality];
+      hp += Math.floor((part.stats.hp || 0) * qMul);
+      atk += Math.floor((part.stats.atk || 0) * qMul);
+      def += Math.floor((part.stats.def || 0) * qMul);
+      spd += Math.floor((part.stats.spd || 0) * qMul);
     }
   });
+
+  const setStats = computeSetBonusStats(animal.parts);
+  hp += setStats.hp;
+  atk += setStats.atk;
+  def += setStats.def;
+  spd += setStats.spd;
 
   return { hp, atk, def, spd };
 };
@@ -184,6 +192,12 @@ export const createBattleUnit = (
     }
   }
 
+  const activeSetBonuses = getActiveSetBonuses(animal.parts);
+  let setCritBonus = 0;
+  for (const entry of activeSetBonuses) {
+    setCritBonus += entry.bonus.stats.crit || 0;
+  }
+
   return {
     id: generateId('unit'),
     animalId: animal.id,
@@ -201,13 +215,14 @@ export const createBattleUnit = (
     position,
     formationPosition,
     targetStrategy,
-    buffs: [],
+    buffs: setCritBonus > 0 ? [{ stat: 'crit', value: setCritBonus, remainingTurns: -1 }] : [],
     statusEffects: [],
     comboCount: 0,
     isSkipTurn: false,
     passives: allPassives,
     activatedCombos: [],
     triggeredPassives: [],
+    activeSetBonuses: activeSetBonuses.map(e => ({ setId: e.setId, bonus: e.bonus })),
   };
 };
 
@@ -1306,8 +1321,8 @@ export const updateCooldowns = (units: BattleUnit[]): void => {
       }
     });
     unit.buffs = unit.buffs
-      .map(b => ({ ...b, remainingTurns: b.remainingTurns - 1 }))
-      .filter(b => b.remainingTurns > 0);
+      .map(b => ({ ...b, remainingTurns: b.remainingTurns === -1 ? -1 : b.remainingTurns - 1 }))
+      .filter(b => b.remainingTurns === -1 || b.remainingTurns > 0);
   });
 };
 

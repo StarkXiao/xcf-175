@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
-import { Swords, Plus, ArrowLeft, Info, Target, Zap, Shield } from 'lucide-react';
+import { Swords, Plus, ArrowLeft, Info, Target, Zap, Shield, Gem } from 'lucide-react';
 import { NeonButton } from '@/components/NeonButton';
 import { NeonCard } from '@/components/NeonCard';
 import { AnimalCard } from '@/components/AnimalCard';
@@ -10,7 +10,7 @@ import { useGameStore } from '@/store/useGameStore';
 import { BATTLE_CONSTANTS } from '@/engine/constants';
 import { FORMATION_MODIFIERS } from '@/engine/damageCalc';
 import type { Animal, PartSlot as PartSlotType, FormationPosition, TargetStrategy, ActionPriority } from '@/types';
-import { getPartTemplate } from '@/data/parts';
+import { getPartTemplate, getActiveSetBonuses, QUALITY_NAMES, QUALITY_COLORS, QUALITY_REFINE_COST } from '@/data/parts';
 import { calculateAnimalStats } from '@/engine/battleEngine';
 import { StatBar } from '@/components/StatBar';
 import { cn } from '@/lib/utils';
@@ -47,7 +47,9 @@ export default function Lineup() {
     levelUpAnimal,
     equipPart,
     unequipPart,
+    refinePart,
     ownedParts,
+    player,
     setFormationPosition,
     setTargetStrategy,
     setActionPriority,
@@ -399,20 +401,76 @@ export default function Lineup() {
             <h2 className="font-cyber font-bold text-lg mb-4 text-gray-300">
               部件改造 - {selectedAnimal.name}
             </h2>
-            <div className="grid grid-cols-3 md:grid-cols-6 gap-4">
+            <div className="grid grid-cols-3 md:grid-cols-6 gap-4 mb-4">
               {partSlots.map(slot => {
                 const part = getEquippedPart(selectedAnimal, slot);
+                const equippedData = selectedAnimal.parts.find(p => p.slot === slot);
+                const partWithQuality = part
+                  ? { ...part, quality: equippedData?.quality || 1, setId: part.setId || equippedData?.setId }
+                  : null;
                 return (
                   <PartSlot
                     key={slot}
                     slot={slot}
-                    part={part}
+                    part={partWithQuality}
                     onClick={() => handleSlotClick(slot)}
                     onRemove={part ? () => handleUnequipPart(slot) : undefined}
+                    onRefine={undefined}
                   />
                 );
               })}
             </div>
+
+            {(() => {
+              const activeSets = getActiveSetBonuses(selectedAnimal.parts);
+              if (activeSets.length === 0) return null;
+              const grouped = new Map<string, typeof activeSets>();
+              for (const entry of activeSets) {
+                const existing = grouped.get(entry.setId) || [];
+                existing.push(entry);
+                grouped.set(entry.setId, existing);
+              }
+              return (
+                <NeonCard variant="pink" className="p-4 mb-4">
+                  <h3 className="font-cyber font-bold text-sm text-gray-400 mb-3 flex items-center gap-2">
+                    <Gem className="w-4 h-4 text-cyber-pink" />
+                    套装效果
+                  </h3>
+                  <div className="space-y-2">
+                    {Array.from(grouped.entries()).map(([setId, entries]) => {
+                      const first = entries[0];
+                      return (
+                        <div
+                          key={setId}
+                          className="flex items-center gap-3 px-3 py-2 rounded-lg"
+                          style={{
+                            background: `${first.color}10`,
+                            border: `1px solid ${first.color}40`,
+                          }}
+                        >
+                          <span className="text-xl">{first.emoji}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="font-cyber font-bold text-sm" style={{ color: first.color }}>
+                                {first.setName}套装
+                              </span>
+                              <span className="text-xs text-gray-400">
+                                {first.count}件
+                              </span>
+                            </div>
+                            {entries.map((e, i) => (
+                              <div key={i} className="text-xs mt-0.5" style={{ color: `${first.color}cc` }}>
+                                {e.bonus.pieces}件: {e.bonus.description}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </NeonCard>
+              );
+            })()}
           </div>
         )}
 
@@ -498,12 +556,36 @@ export default function Lineup() {
               ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                   {availablePartsForSlot.map(part => (
-                    <PartSlot
-                      key={part.id}
-                      slot={selectedSlot}
-                      part={part}
-                      onClick={() => handleEquipPart(part.id)}
-                    />
+                    <div key={part.id} className="relative">
+                      <PartSlot
+                        slot={selectedSlot}
+                        part={part}
+                        onClick={() => handleEquipPart(part.id)}
+                        onRefine={
+                          part.quality < 5
+                            ? () => {
+                                const cost = QUALITY_REFINE_COST[(part.quality + 1) as 1 | 2 | 3 | 4 | 5];
+                                if (cost && player.coins >= cost) {
+                                  refinePart(part.id);
+                                }
+                              }
+                            : undefined
+                        }
+                      />
+                      {part.quality > 1 && (
+                        <div className="text-center mt-1">
+                          <span
+                            className="text-[10px] font-cyber px-1 rounded"
+                            style={{
+                              color: QUALITY_COLORS[part.quality],
+                              background: `${QUALITY_COLORS[part.quality]}15`,
+                            }}
+                          >
+                            {QUALITY_NAMES[part.quality]}
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   ))}
                 </div>
               )}

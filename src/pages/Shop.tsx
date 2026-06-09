@@ -10,7 +10,7 @@ import { Empty } from '@/components/Empty';
 import { useGameStore } from '@/store/useGameStore';
 import { GACHA_RATES, GACHA_COST, PITY_CONFIG } from '@/engine/constants';
 import { getAnimalTemplate } from '@/data/animals';
-import { getPartTemplate } from '@/data/parts';
+import { getPartTemplate, QUALITY_NAMES, QUALITY_COLORS, getPartSet } from '@/data/parts';
 import { getSkillTemplate } from '@/data/skills';
 import type { Animal, Part, Skill, Rarity, GachaPoolType, GachaRecord, GachaMultiResult } from '@/types';
 import { getRarityColor, getRarityStars, getRarityName, formatTime } from '@/utils/format';
@@ -137,9 +137,26 @@ export default function Shop() {
         }
         return (
           <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
-            {ownedParts.map(part => (
-              <PartSlot key={part.id} slot={part.slot} part={part} />
-            ))}
+            {ownedParts.map(part => {
+              const set = part.setId ? getPartSet(part.setId) : null;
+              return (
+                <div key={part.id} className="flex flex-col items-center">
+                  <PartSlot slot={part.slot} part={part} />
+                  {part.quality > 1 && (
+                    <span className="text-[10px] font-cyber mt-1 px-1 rounded"
+                      style={{ color: QUALITY_COLORS[part.quality], background: `${QUALITY_COLORS[part.quality]}15` }}>
+                      {QUALITY_NAMES[part.quality]}
+                    </span>
+                  )}
+                  {set && (
+                    <span className="text-[10px] mt-0.5 px-1 rounded"
+                      style={{ color: set.color, background: `${set.color}10` }}>
+                      {set.emoji} {set.name}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
           </div>
         );
 
@@ -272,6 +289,8 @@ export default function Shop() {
     const rarityColor = getRarityColor(result.item.rarity);
     const stars = getRarityStars(result.item.rarity);
     const isHighRarity = result.item.rarity >= 4;
+    const partItem = result.itemType === 'part' ? result.item as Part : null;
+    const partSet = partItem?.setId ? getPartSet(partItem.setId) : null;
 
     return (
       <div
@@ -308,12 +327,24 @@ export default function Shop() {
               UP!
             </div>
           )}
+          {partItem && partItem.quality > 1 && (
+            <div className="absolute top-0 right-0 px-1 py-0.5 rounded text-[9px] font-cyber font-bold"
+              style={{ color: QUALITY_COLORS[partItem.quality], background: `${QUALITY_COLORS[partItem.quality]}30` }}>
+              {QUALITY_NAMES[partItem.quality]}
+            </div>
+          )}
         </div>
         <div className="text-center">
           <div className="text-xs" style={{ color: rarityColor }}>{stars}</div>
           <div className="font-cyber font-bold" style={{ color: rarityColor }}>
             {result.item.name}
           </div>
+          {partSet && (
+            <div className="text-[10px] mt-0.5 px-1 py-0.5 rounded inline-block"
+              style={{ color: partSet.color, background: `${partSet.color}15` }}>
+              {partSet.emoji} {partSet.name}
+            </div>
+          )}
           <div className="text-xs mt-0.5 px-1.5 py-0.5 rounded" style={{
             color: rarityColor,
             background: `${rarityColor}15`,

@@ -48,6 +48,24 @@ export interface Material {
 
 export type PartSlot = 'head' | 'body' | 'limbs' | 'weapon' | 'core' | 'special';
 
+export type PartQuality = 1 | 2 | 3 | 4 | 5;
+
+export type SetBonusStat = 'hp' | 'atk' | 'def' | 'spd' | 'crit';
+
+export interface SetBonus {
+  pieces: number;
+  stats: { hp?: number; atk?: number; def?: number; spd?: number; crit?: number };
+  description: string;
+}
+
+export interface PartSetConfig {
+  id: string;
+  name: string;
+  emoji: string;
+  color: string;
+  bonuses: SetBonus[];
+}
+
 export type SkillType = 'attack' | 'heal' | 'buff' | 'debuff' | 'special' | 'passive';
 
 export type PassiveTrigger = 'onAttack' | 'onHit' | 'onKill' | 'onTurnStart' | 'onTurnEnd' | 'onHpBelow' | 'onAllyHit' | 'onCrit' | 'onStatusApply';
@@ -123,7 +141,7 @@ export type Element = 'fire' | 'ice' | 'thunder' | 'nature' | 'dark';
 
 export type StatusEffectType = 'poison' | 'burn' | 'freeze' | 'paralysis' | 'bleed';
 
-export type BattleLogType = 'damage' | 'crit' | 'heal' | 'skill' | 'buff' | 'debuff' | 'death' | 'turnStart' | 'battleEnd' | 'info' | 'attack' | 'victory' | 'elementAdvantage' | 'statusTick' | 'statusApply' | 'combo' | 'passive' | 'comboTrigger' | 'branchActivate';
+export type BattleLogType = 'damage' | 'crit' | 'heal' | 'skill' | 'buff' | 'debuff' | 'death' | 'turnStart' | 'battleEnd' | 'info' | 'attack' | 'victory' | 'elementAdvantage' | 'statusTick' | 'statusApply' | 'combo' | 'passive' | 'comboTrigger' | 'branchActivate' | 'setBonus';
 
 export interface AnimalTemplate {
   id: string;
@@ -153,6 +171,7 @@ export interface PartTemplate {
   };
   emoji: string;
   price: number;
+  setId?: string;
 }
 
 export interface SkillTemplate {
@@ -200,6 +219,8 @@ export interface OpponentTemplate {
 export interface EquippedPart {
   partId: string;
   slot: PartSlot;
+  quality?: PartQuality;
+  setId?: string;
 }
 
 export interface EquippedSkill {
@@ -238,6 +259,8 @@ export interface Part {
   };
   emoji: string;
   price: number;
+  quality: PartQuality;
+  setId?: string;
 }
 
 export interface Skill {
@@ -336,6 +359,7 @@ export interface BattleUnit {
   passives: PassiveEffect[];
   activatedCombos: string[];
   triggeredPassives: string[];
+  activeSetBonuses: { setId: string; bonus: SetBonus }[];
 }
 
 export interface StatusEffectPayload {
