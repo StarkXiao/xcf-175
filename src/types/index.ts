@@ -299,7 +299,7 @@ export interface BattleSkill {
 }
 
 export interface BattleBuff {
-  stat: 'atk' | 'def' | 'spd';
+  stat: 'atk' | 'def' | 'spd' | 'crit';
   value: number;
   remainingTurns: number;
 }
@@ -334,6 +334,7 @@ export interface BattleUnit {
   isSkipTurn: boolean;
   passives: PassiveEffect[];
   activatedCombos: string[];
+  triggeredPassives: string[];
 }
 
 export interface StatusEffectPayload {

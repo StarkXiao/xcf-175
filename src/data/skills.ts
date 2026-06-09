@@ -853,7 +853,7 @@ export const SKILL_TEMPLATES: SkillTemplate[] = [
     comboTriggers: [
       {
         id: 'combo_flame_fire',
-        name: '烈焰共鸣',
+        name: '焰火交融',
         description: '与烈焰技能组合，额外灼烧',
         emoji: '🔥',
         condition: 'specificSkill',
@@ -917,7 +917,7 @@ export const SKILL_TEMPLATES: SkillTemplate[] = [
     comboTriggers: [
       {
         id: 'combo_frost_ice',
-        name: '冰霜领域',
+        name: '寒冰共鸣',
         description: '与寒冰技能组合，强化冻结效果',
         emoji: '❄️',
         condition: 'specificSkill',
@@ -1051,7 +1051,7 @@ export const SKILL_TEMPLATES: SkillTemplate[] = [
     comboTriggers: [
       {
         id: 'combo_dark_claw_bite',
-        name: '爪牙并用',
+        name: '暗影爪牙',
         description: '与撕咬或利爪组合触发',
         emoji: '🌑',
         condition: 'specificSkill',
@@ -1115,7 +1115,7 @@ export const SKILL_TEMPLATES: SkillTemplate[] = [
     comboTriggers: [
       {
         id: 'combo_thunder_wave_rage',
-        name: '雷霆万钧',
+        name: '雷电共振',
         description: '与雷电技能组合，强化全队攻击',
         emoji: '⚡',
         condition: 'specificSkill',

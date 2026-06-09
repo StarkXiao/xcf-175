@@ -72,7 +72,10 @@ export const calculateDamage = (
   let baseDamage = finalAtk - finalDef * BATTLE_CONSTANTS.DEFENSE_FACTOR;
   baseDamage += skillDamage;
 
-  const isCrit = chance(BATTLE_CONSTANTS.BASE_CRIT_RATE);
+  const critBonus = attacker.buffs
+    .filter(b => b.stat === 'crit')
+    .reduce((sum, b) => sum + b.value, 0);
+  const isCrit = chance(BATTLE_CONSTANTS.BASE_CRIT_RATE + critBonus);
   const critMultiplier = isCrit ? BATTLE_CONSTANTS.BASE_CRIT_DAMAGE : 1;
 
   const effectiveElement = skillElement || attacker.element;

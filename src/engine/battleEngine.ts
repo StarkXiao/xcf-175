@@ -15,6 +15,7 @@ import type {
   PassiveEffect,
   ComboTrigger,
   SkillBranch,
+  StatusEffectType,
 } from '@/types';
 import { getAnimalTemplate } from '@/data/animals';
 import { getSkillTemplate } from '@/data/skills';
@@ -35,6 +36,27 @@ import {
   getAliveUnits,
   isTeamAlive,
 } from './damageCalc';
+
+interface PassiveContext {
+  attacker?: BattleUnit;
+  damage?: number;
+  isCrit?: boolean;
+  statusApplied?: { type: StatusEffectType; chance: number; duration: number; damage?: number };
+}
+
+interface TargetResult {
+  targetId: string;
+  damage: number;
+  isCrit: boolean;
+  killed: boolean;
+  statusApplied?: { type: StatusEffectType; chance: number; duration: number; damage?: number };
+}
+
+interface ActionResult {
+  logs: BattleLogEntry[];
+  targets: TargetResult[];
+  skillUsed: BattleSkill | null;
+}
 
 export const calculateAnimalStats = (animal: Animal): {
   hp: number;
@@ -184,6 +206,7 @@ export const createBattleUnit = (
     isSkipTurn: false,
     passives: allPassives,
     activatedCombos: [],
+    triggeredPassives: [],
   };
 };
 
@@ -444,10 +467,12 @@ export const processPassives = (
   unit: BattleUnit,
   trigger: PassiveEffect['trigger'],
   playerUnits: BattleUnit[],
-  enemyUnits: BattleUnit[]
-): BattleLogEntry[] => {
+  enemyUnits: BattleUnit[],
+  context?: PassiveContext
+): { logs: BattleLogEntry[]; extraTurn: boolean } => {
   const logs: BattleLogEntry[] = [];
-  if (!unit.isAlive) return logs;
+  let extraTurn = false;
+  if (!unit.isAlive) return { logs, extraTurn };
 
   const allUnits = [...playerUnits, ...enemyUnits];
   const allies = allUnits.filter(u => u.side === unit.side && u.isAlive);
@@ -458,6 +483,8 @@ export const processPassives = (
     if (passive.hpThreshold) {
       const hpPercent = (unit.currentHp / unit.maxHp) * 100;
       if (hpPercent > passive.hpThreshold) continue;
+      if (unit.triggeredPassives.includes(passive.id)) continue;
+      unit.triggeredPassives.push(passive.id);
     }
 
     const triggerRoll = passive.triggerChance ?? 100;
@@ -495,50 +522,161 @@ export const processPassives = (
     }
 
     if (passive.damageBonus) {
-      const existingAtkBuff = unit.buffs.find(b => b.stat === 'atk');
-      if (existingAtkBuff) {
-        existingAtkBuff.value += passive.damageBonus;
-      } else {
-        unit.buffs.push({
-          stat: 'atk',
-          value: passive.damageBonus,
-          remainingTurns: 2,
-        });
+      if (trigger === 'onHit' && context?.attacker && context.damage) {
+        const reflectDamage = Math.floor(context.damage * passive.damageBonus / 100);
+        if (reflectDamage > 0 && context.attacker.isAlive) {
+          context.attacker.currentHp = Math.max(0, context.attacker.currentHp - reflectDamage);
+          logs.push({
+            timestamp: Date.now(),
+            type: 'passive',
+            sourceId: unit.id,
+            sourceName: unit.name,
+            targetId: context.attacker.id,
+            targetName: context.attacker.name,
+            value: reflectDamage,
+            passiveId: passive.id,
+            passiveName: passive.name,
+            message: `${passive.emoji} ${unit.name} 的被动【${passive.name}】触发！反弹 ${reflectDamage} 点伤害给 ${context.attacker.name}！`,
+          });
+          if (context.attacker.currentHp <= 0) {
+            context.attacker.isAlive = false;
+            logs.push({
+              timestamp: Date.now(),
+              type: 'death',
+              sourceId: unit.id,
+              sourceName: unit.name,
+              targetId: context.attacker.id,
+              targetName: context.attacker.name,
+              message: `💀 ${context.attacker.name} 被击败了！`,
+            });
+          }
+        }
+      } else if (trigger !== 'onHit') {
+        const existingAtkBuff = unit.buffs.find(b => b.stat === 'atk');
+        if (existingAtkBuff) {
+          existingAtkBuff.value += passive.damageBonus;
+        } else {
+          unit.buffs.push({
+            stat: 'atk',
+            value: passive.damageBonus,
+            remainingTurns: 2,
+          });
+        }
       }
     }
 
     if (passive.critBonus) {
-      const existingCritBuff = unit.buffs.find(b => b.stat === 'atk');
+      const existingCritBuff = unit.buffs.find(b => b.stat === 'crit');
       if (existingCritBuff) {
-        existingCritBuff.value += passive.critBonus;
+        existingCritBuff.value = Math.max(existingCritBuff.value, passive.critBonus);
+        existingCritBuff.remainingTurns = Math.max(existingCritBuff.remainingTurns, 2);
       } else {
         unit.buffs.push({
-          stat: 'atk',
+          stat: 'crit',
           value: passive.critBonus,
           remainingTurns: 2,
+        });
+      }
+      if (!passive.healPercent && !passive.damageBonus && !passive.statBonus) {
+        logs.push({
+          timestamp: Date.now(),
+          type: 'passive',
+          sourceId: unit.id,
+          sourceName: unit.name,
+          targetId: unit.id,
+          targetName: unit.name,
+          passiveId: passive.id,
+          passiveName: passive.name,
+          message: `${passive.emoji} ${unit.name} 的被动【${passive.name}】触发！暴击率 +${passive.critBonus}%！`,
         });
       }
     }
 
     if (passive.statusEffectApply) {
       const enemies = allUnits.filter(u => u.side !== unit.side && u.isAlive);
-      const target = getLowestHpTarget(enemies);
-      if (target && chance(passive.statusEffectApply.chance)) {
-        const existing = target.statusEffects.find(se => se.type === passive.statusEffectApply!.type);
+      const seTarget = getLowestHpTarget(enemies);
+      if (seTarget && chance(passive.statusEffectApply.chance)) {
+        const existing = seTarget.statusEffects.find(se => se.type === passive.statusEffectApply!.type);
         if (existing) {
           existing.remainingTurns = Math.max(existing.remainingTurns, passive.statusEffectApply!.duration);
         } else {
-          target.statusEffects.push({
+          seTarget.statusEffects.push({
             type: passive.statusEffectApply!.type,
             remainingTurns: passive.statusEffectApply!.duration,
             damage: passive.statusEffectApply!.damage || 0,
             sourceId: unit.id,
           });
         }
+        const seConfig = STATUS_EFFECT_CONFIG[passive.statusEffectApply.type];
+        logs.push({
+          timestamp: Date.now(),
+          type: 'passive',
+          sourceId: unit.id,
+          sourceName: unit.name,
+          targetId: seTarget.id,
+          targetName: seTarget.name,
+          passiveId: passive.id,
+          passiveName: passive.name,
+          message: `${passive.emoji} ${unit.name} 的被动【${passive.name}】触发！对 ${seTarget.name} 施加了${seConfig.name}！`,
+        });
+      }
+    } else if (trigger === 'onStatusApply' && context?.statusApplied) {
+      const enemies = allUnits.filter(u => u.side !== unit.side && u.isAlive);
+      const alreadyTargetedIds = allUnits
+        .filter(u => u.statusEffects.some(se => se.sourceId === unit.id && se.type === context.statusApplied!.type))
+        .map(u => u.id);
+      const otherEnemies = enemies.filter(e => !alreadyTargetedIds.includes(e.id));
+      const seTarget = otherEnemies.length > 0
+        ? getLowestHpTarget(otherEnemies)
+        : null;
+
+      if (seTarget) {
+        const sa = context.statusApplied;
+        if (chance(sa.chance)) {
+          const existing = seTarget.statusEffects.find(se => se.type === sa.type);
+          if (existing) {
+            existing.remainingTurns = Math.max(existing.remainingTurns, sa.duration);
+          } else {
+            seTarget.statusEffects.push({
+              type: sa.type,
+              remainingTurns: sa.duration,
+              damage: sa.damage || 0,
+              sourceId: unit.id,
+            });
+          }
+          const seConfig = STATUS_EFFECT_CONFIG[sa.type];
+          logs.push({
+            timestamp: Date.now(),
+            type: 'passive',
+            sourceId: unit.id,
+            sourceName: unit.name,
+            targetId: seTarget.id,
+            targetName: seTarget.name,
+            passiveId: passive.id,
+            passiveName: passive.name,
+            message: `${passive.emoji} ${unit.name} 的被动【${passive.name}】触发！${seTarget.name} 也被施加了${seConfig.name}！`,
+          });
+        }
       }
     }
 
-    if (!passive.healPercent && !passive.damageBonus && !passive.critBonus && !passive.statusEffectApply && !passive.statBonus) {
+    if (passive.extraTurnChance) {
+      if (chance(passive.extraTurnChance)) {
+        extraTurn = true;
+        logs.push({
+          timestamp: Date.now(),
+          type: 'passive',
+          sourceId: unit.id,
+          sourceName: unit.name,
+          passiveId: passive.id,
+          passiveName: passive.name,
+          message: `${passive.emoji} ${unit.name} 的被动【${passive.name}】触发！获得额外行动机会！`,
+        });
+      }
+    }
+
+    if (!passive.healPercent && !passive.damageBonus && !passive.critBonus && !passive.statusEffectApply
+      && !(trigger === 'onStatusApply' && context?.statusApplied) && !passive.statBonus && !passive.extraTurnChance) {
       logs.push({
         timestamp: Date.now(),
         type: 'passive',
@@ -551,7 +689,7 @@ export const processPassives = (
     }
   }
 
-  return logs;
+  return { logs, extraTurn };
 };
 
 export const checkComboTriggers = (
@@ -751,9 +889,10 @@ export const executeSkill = (
   skill: BattleSkill,
   playerUnits: BattleUnit[],
   enemyUnits: BattleUnit[]
-): BattleLogEntry[] => {
+): ActionResult => {
   const logs: BattleLogEntry[] = [];
   const targets = Array.isArray(target) ? target : [target];
+  const targetResults: TargetResult[] = [];
 
   skill.currentCooldown = skill.cooldown;
 
@@ -801,6 +940,13 @@ export const executeSkill = (
 
   targets.forEach(t => {
     if (!t.isAlive) return;
+
+    const tr: TargetResult = {
+      targetId: t.id,
+      damage: 0,
+      isCrit: false,
+      killed: false,
+    };
 
     if (skill.type === 'heal') {
       const healAmount = calculateHeal(attacker, t, skill.effect?.healPercent || 20);
@@ -870,6 +1016,8 @@ export const executeSkill = (
       if (skill.damage > 0) {
         const dmgResult = calculateDamage(attacker, t, skill.damage, skill.element);
         t.currentHp = Math.max(0, t.currentHp - dmgResult.damage);
+        tr.damage = dmgResult.damage;
+        tr.isCrit = dmgResult.isCrit;
 
         if (dmgResult.isElementAdvantage) {
           logs.push({
@@ -906,10 +1054,17 @@ export const executeSkill = (
       }
 
       const statusLog = tryApplyStatusEffect(attacker, t, skill);
-      if (statusLog) logs.push(statusLog);
+      if (statusLog) {
+        logs.push(statusLog);
+        if (skill.statusEffect) {
+          tr.statusApplied = { ...skill.statusEffect };
+        }
+      }
     } else {
       const dmgResult = calculateDamage(attacker, t, skill.damage, skill.element);
       t.currentHp = Math.max(0, t.currentHp - dmgResult.damage);
+      tr.damage = dmgResult.damage;
+      tr.isCrit = dmgResult.isCrit;
 
       if (dmgResult.isElementAdvantage) {
         logs.push({
@@ -945,11 +1100,17 @@ export const executeSkill = (
       });
 
       const statusLog = tryApplyStatusEffect(attacker, t, skill);
-      if (statusLog) logs.push(statusLog);
+      if (statusLog) {
+        logs.push(statusLog);
+        if (skill.statusEffect) {
+          tr.statusApplied = { ...skill.statusEffect };
+        }
+      }
     }
 
     if (t.currentHp <= 0) {
       t.isAlive = false;
+      tr.killed = true;
       logs.push({
         timestamp: Date.now(),
         type: 'death',
@@ -960,21 +1121,24 @@ export const executeSkill = (
         message: `💀 ${t.name} 被击败了！`,
       });
     }
+
+    targetResults.push(tr);
   });
 
-  return logs;
+  return { logs, targets: targetResults, skillUsed: skill };
 };
 
 export const executeBasicAttack = (
   attacker: BattleUnit,
   playerUnits: BattleUnit[],
   enemyUnits: BattleUnit[]
-): BattleLogEntry[] => {
+): ActionResult => {
   const logs: BattleLogEntry[] = [];
+  const targetResults: TargetResult[] = [];
   const enemies = attacker.side === 'player' ? enemyUnits : playerUnits;
   const target = getLowestHpTarget(enemies);
 
-  if (!target) return logs;
+  if (!target) return { logs, targets: [], skillUsed: null };
 
   attacker.comboCount++;
 
@@ -985,6 +1149,13 @@ export const executeBasicAttack = (
 
   const dmgResult = calculateDamage(attacker, target, 0);
   target.currentHp = Math.max(0, target.currentHp - dmgResult.damage);
+
+  const tr: TargetResult = {
+    targetId: target.id,
+    damage: dmgResult.damage,
+    isCrit: dmgResult.isCrit,
+    killed: false,
+  };
 
   if (dmgResult.isElementAdvantage) {
     logs.push({
@@ -1033,6 +1204,7 @@ export const executeBasicAttack = (
 
   if (target.currentHp <= 0) {
     target.isAlive = false;
+    tr.killed = true;
     logs.push({
       timestamp: Date.now(),
       type: 'death',
@@ -1044,7 +1216,20 @@ export const executeBasicAttack = (
     });
   }
 
-  return logs;
+  targetResults.push(tr);
+
+  const basicSkill: BattleSkill = {
+    skillId: 'basic_attack',
+    name: '普通攻击',
+    type: 'attack',
+    damage: 0,
+    cooldown: 0,
+    currentCooldown: 0,
+    emoji: '⚔️',
+    element: attacker.element,
+  };
+
+  return { logs, targets: targetResults, skillUsed: basicSkill };
 };
 
 export const updateCooldowns = (units: BattleUnit[]): void => {
@@ -1106,6 +1291,106 @@ export const simulateFullBattle = (
   const fullBattleLog: BattleLogEntry[] = [];
   let turn = 0;
 
+  const processUnitAction = (unit: BattleUnit): boolean => {
+    if (!unit.isAlive) return false;
+    if (!isTeamAlive(playerUnits) || !isTeamAlive(enemyUnits)) return false;
+
+    let extraTurn = false;
+
+    const skill = selectSkillForUnit(unit);
+    let actionResult: ActionResult;
+
+    if (skill) {
+      const target = selectTarget(unit, playerUnits, enemyUnits, skill);
+      if (target) {
+        actionResult = executeSkill(unit, target, skill, playerUnits, enemyUnits);
+      } else {
+        actionResult = executeBasicAttack(unit, playerUnits, enemyUnits);
+      }
+    } else {
+      actionResult = executeBasicAttack(unit, playerUnits, enemyUnits);
+    }
+
+    fullBattleLog.push(...actionResult.logs);
+
+    const allUnits = [...playerUnits, ...enemyUnits];
+
+    for (const tr of actionResult.targets) {
+      if (tr.damage <= 0) continue;
+      const target = allUnits.find(u => u.id === tr.targetId);
+      if (!target) continue;
+
+      const hitResult = processPassives(target, 'onHit', playerUnits, enemyUnits, {
+        attacker: unit,
+        damage: tr.damage,
+        isCrit: tr.isCrit,
+      });
+      fullBattleLog.push(...hitResult.logs);
+      extraTurn = extraTurn || hitResult.extraTurn;
+
+      const targetAllies = (target.side === 'player' ? playerUnits : enemyUnits)
+        .filter(u => u.isAlive && u.id !== target.id);
+      for (const ally of targetAllies) {
+        const allyHitResult = processPassives(ally, 'onAllyHit', playerUnits, enemyUnits, {
+          attacker: unit,
+          damage: tr.damage,
+        });
+        fullBattleLog.push(...allyHitResult.logs);
+        extraTurn = extraTurn || allyHitResult.extraTurn;
+      }
+
+      if (tr.isCrit) {
+        const critResult = processPassives(unit, 'onCrit', playerUnits, enemyUnits, {
+          damage: tr.damage,
+          isCrit: true,
+        });
+        fullBattleLog.push(...critResult.logs);
+        extraTurn = extraTurn || critResult.extraTurn;
+      }
+
+      if (target.isAlive) {
+        const hpBelowResult = processPassives(target, 'onHpBelow', playerUnits, enemyUnits, {
+          attacker: unit,
+          damage: tr.damage,
+        });
+        fullBattleLog.push(...hpBelowResult.logs);
+        extraTurn = extraTurn || hpBelowResult.extraTurn;
+      }
+
+      if (tr.killed) {
+        const killResult = processPassives(unit, 'onKill', playerUnits, enemyUnits);
+        fullBattleLog.push(...killResult.logs);
+        extraTurn = extraTurn || killResult.extraTurn;
+      }
+    }
+
+    const hasDamage = actionResult.targets.some(tr => tr.damage > 0);
+    if (hasDamage) {
+      const attackResult = processPassives(unit, 'onAttack', playerUnits, enemyUnits, {
+        isCrit: actionResult.targets.some(tr => tr.isCrit),
+      });
+      fullBattleLog.push(...attackResult.logs);
+      extraTurn = extraTurn || attackResult.extraTurn;
+    }
+
+    for (const tr of actionResult.targets) {
+      if (tr.statusApplied) {
+        const statusResult = processPassives(unit, 'onStatusApply', playerUnits, enemyUnits, {
+          statusApplied: tr.statusApplied,
+        });
+        fullBattleLog.push(...statusResult.logs);
+        extraTurn = extraTurn || statusResult.extraTurn;
+      }
+    }
+
+    if (actionResult.skillUsed) {
+      const comboLogs = checkComboTriggers(unit, actionResult.skillUsed, playerUnits, enemyUnits);
+      fullBattleLog.push(...comboLogs);
+    }
+
+    return extraTurn;
+  };
+
   while (
     isTeamAlive(playerUnits) &&
     isTeamAlive(enemyUnits) &&
@@ -1117,12 +1402,21 @@ export const simulateFullBattle = (
     const allTurnUnits = [...playerUnits, ...enemyUnits];
     for (const unit of allTurnUnits) {
       if (!unit.isAlive) continue;
-      const passiveLogs = processPassives(unit, 'onTurnStart', playerUnits, enemyUnits);
-      fullBattleLog.push(...passiveLogs);
+      const { logs: startLogs, extraTurn: startExtra } = processPassives(unit, 'onTurnStart', playerUnits, enemyUnits);
+      fullBattleLog.push(...startLogs);
+      if (startExtra) {
+        processUnitAction(unit);
+      }
     }
 
     const statusLogs = processStatusEffects([...playerUnits, ...enemyUnits]);
     fullBattleLog.push(...statusLogs);
+
+    for (const unit of [...playerUnits, ...enemyUnits]) {
+      if (!unit.isAlive) continue;
+      const hpBelowResult = processPassives(unit, 'onHpBelow', playerUnits, enemyUnits);
+      fullBattleLog.push(...hpBelowResult.logs);
+    }
 
     if (!isTeamAlive(playerUnits) || !isTeamAlive(enemyUnits)) break;
 
@@ -1158,33 +1452,17 @@ export const simulateFullBattle = (
         continue;
       }
 
-      const skill = selectSkillForUnit(unit);
-      let turnLogs: BattleLogEntry[];
+      const extraTurn = processUnitAction(unit);
 
-      if (skill) {
-        const target = selectTarget(unit, playerUnits, enemyUnits, skill);
-        if (target) {
-          turnLogs = executeSkill(unit, target, skill, playerUnits, enemyUnits);
-        } else {
-          turnLogs = executeBasicAttack(unit, playerUnits, enemyUnits);
-        }
-
-        const comboLogs = checkComboTriggers(unit, skill, playerUnits, enemyUnits);
-        turnLogs.push(...comboLogs);
-
-        const attackPassiveLogs = processPassives(unit, 'onAttack', playerUnits, enemyUnits);
-        turnLogs.push(...attackPassiveLogs);
-      } else {
-        turnLogs = executeBasicAttack(unit, playerUnits, enemyUnits);
+      if (extraTurn && unit.isAlive && isTeamAlive(playerUnits) && isTeamAlive(enemyUnits)) {
+        processUnitAction(unit);
       }
-
-      fullBattleLog.push(...turnLogs);
     }
 
     for (const unit of [...playerUnits, ...enemyUnits]) {
       if (!unit.isAlive) continue;
-      const endPassiveLogs = processPassives(unit, 'onTurnEnd', playerUnits, enemyUnits);
-      fullBattleLog.push(...endPassiveLogs);
+      const { logs: endLogs } = processPassives(unit, 'onTurnEnd', playerUnits, enemyUnits);
+      fullBattleLog.push(...endLogs);
     }
 
     updateCooldowns([...playerUnits, ...enemyUnits]);
