@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { BattleUnit, BattleLogEntry, BattleRecord, StatusEffect } from '@/types';
+import type { BattleUnit, BattleLogEntry, BattleRecord } from '@/types';
 import { BATTLE_CONSTANTS } from '@/engine/constants';
 
 interface BattleState {
@@ -85,7 +85,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
 
       set({
         currentLogIndex: nextIndex,
-        attackingUnitId: nextLog.actorId || null,
+        attackingUnitId: nextLog.sourceId || null,
         hurtUnitId: nextLog.targetId || null,
       });
 
@@ -120,7 +120,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
 
     set({
       currentLogIndex: nextIndex,
-      attackingUnitId: nextLog.actorId || null,
+      attackingUnitId: nextLog.sourceId || null,
       hurtUnitId: nextLog.targetId || null,
     });
 
@@ -152,151 +152,150 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       let newPlayerUnits = [...state.playerUnits];
       let newEnemyUnits = [...state.enemyUnits];
 
-      if (log.type === 'damage' || log.type === 'crit' || log.type === 'statusTick') {
-        const targetId = log.targetId;
-        const damage = log.value || 0;
-        const isEnemyTarget = newEnemyUnits.some(u => u.id === targetId);
+      const applyToUnit = (
+        units: BattleUnit[],
+        unitId: string,
+        fn: (u: BattleUnit) => BattleUnit
+      ): BattleUnit[] => units.map(u => u.id === unitId ? fn(u) : u);
 
-        if (isEnemyTarget) {
-          newEnemyUnits = newEnemyUnits.map(u =>
-            u.id === targetId
-              ? { ...u, currentHp: Math.max(0, u.currentHp - damage) }
-              : u
-          );
+      const findAndApply = (
+        unitId: string,
+        fn: (u: BattleUnit) => BattleUnit
+      ) => {
+        if (newEnemyUnits.some(u => u.id === unitId)) {
+          newEnemyUnits = applyToUnit(newEnemyUnits, unitId, fn);
         } else {
-          newPlayerUnits = newPlayerUnits.map(u =>
-            u.id === targetId
-              ? { ...u, currentHp: Math.max(0, u.currentHp - damage) }
-              : u
-          );
+          newPlayerUnits = applyToUnit(newPlayerUnits, unitId, fn);
+        }
+      };
+
+      if (log.type === 'damage' || log.type === 'crit' || log.type === 'statusTick') {
+        const targetId = log.targetId!;
+        const damage = log.value || 0;
+        findAndApply(targetId, u => ({
+          ...u,
+          currentHp: Math.max(0, u.currentHp - damage),
+          comboCount: log.comboCount ?? u.comboCount,
+          isSkipTurn: log.isSkipTurn ?? u.isSkipTurn,
+        }));
+
+        if (log.type === 'statusTick' && log.statusType && !log.isSkipTurn) {
+          findAndApply(targetId, u => ({
+            ...u,
+            statusEffects: u.statusEffects
+              .map(se => se.type === log.statusType
+                ? { ...se, remainingTurns: log.statusRemainingTurns ?? se.remainingTurns }
+                : se)
+              .filter(se => se.remainingTurns > 0),
+          }));
         }
       }
 
       if (log.type === 'heal') {
-        const targetId = log.targetId;
+        const targetId = log.targetId!;
         const heal = log.value || 0;
-        const isEnemyTarget = newEnemyUnits.some(u => u.id === targetId);
-
-        if (isEnemyTarget) {
-          newEnemyUnits = newEnemyUnits.map(u =>
-            u.id === targetId
-              ? { ...u, currentHp: Math.min(u.maxHp, u.currentHp + heal) }
-              : u
-          );
-        } else {
-          newPlayerUnits = newPlayerUnits.map(u =>
-            u.id === targetId
-              ? { ...u, currentHp: Math.min(u.maxHp, u.currentHp + heal) }
-              : u
-          );
-        }
+        findAndApply(targetId, u => ({
+          ...u,
+          currentHp: Math.min(u.maxHp, u.currentHp + heal),
+        }));
       }
 
       if (log.type === 'death') {
-        const targetId = log.targetId;
-        const isEnemyTarget = newEnemyUnits.some(u => u.id === targetId);
-
-        if (isEnemyTarget) {
-          newEnemyUnits = newEnemyUnits.map(u =>
-            u.id === targetId ? { ...u, isAlive: false } : u
-          );
-        } else {
-          newPlayerUnits = newPlayerUnits.map(u =>
-            u.id === targetId ? { ...u, isAlive: false } : u
-          );
-        }
+        const targetId = log.targetId!;
+        findAndApply(targetId, u => ({
+          ...u,
+          isAlive: false,
+          statusEffects: [],
+          buffs: [],
+          comboCount: 0,
+        }));
       }
 
       if (log.type === 'buff' || log.type === 'debuff') {
-        const targetId = log.targetId;
-        const isEnemyTarget = newEnemyUnits.some(u => u.id === targetId);
-        const buffValue = log.type === 'buff' ? 10 : -10;
-
-        if (isEnemyTarget) {
-          newEnemyUnits = newEnemyUnits.map(u =>
-            u.id === targetId
-              ? {
-                  ...u,
-                  buffs: [
-                    ...u.buffs,
-                    { stat: 'atk' as const, value: buffValue, remainingTurns: 3 },
-                  ],
-                }
-              : u
-          );
-        } else {
-          newPlayerUnits = newPlayerUnits.map(u =>
-            u.id === targetId
-              ? {
-                  ...u,
-                  buffs: [
-                    ...u.buffs,
-                    { stat: 'atk' as const, value: buffValue, remainingTurns: 3 },
-                  ],
-                }
-              : u
-          );
+        const targetId = log.targetId!;
+        if (log.buffData) {
+          const bd = log.buffData;
+          findAndApply(targetId, u => ({
+            ...u,
+            buffs: [
+              ...u.buffs.filter(b => b.stat !== bd.stat),
+              { stat: bd.stat, value: bd.value, remainingTurns: bd.remainingTurns },
+            ],
+          }));
         }
       }
 
       if (log.type === 'statusApply') {
-        const targetId = log.targetId;
-        const isEnemyTarget = newEnemyUnits.some(u => u.id === targetId);
-        const newStatusEffect: StatusEffect = {
-          type: log.statusType || 'poison',
-          remainingTurns: 3,
-          damage: log.value || 0,
-          sourceId: log.sourceId || log.actorId || '',
-        };
-
-        if (isEnemyTarget) {
-          newEnemyUnits = newEnemyUnits.map(u =>
-            u.id === targetId
-              ? { ...u, statusEffects: [...u.statusEffects, newStatusEffect] }
-              : u
-          );
-        } else {
-          newPlayerUnits = newPlayerUnits.map(u =>
-            u.id === targetId
-              ? { ...u, statusEffects: [...u.statusEffects, newStatusEffect] }
-              : u
-          );
+        const targetId = log.targetId!;
+        if (log.statusEffectData) {
+          const sed = log.statusEffectData;
+          findAndApply(targetId, u => {
+            const existing = u.statusEffects.find(se => se.type === sed.type);
+            let newStatusEffects: typeof u.statusEffects;
+            if (existing) {
+              newStatusEffects = u.statusEffects.map(se =>
+                se.type === sed.type
+                  ? { ...se, remainingTurns: Math.max(se.remainingTurns, sed.remainingTurns), damage: sed.damage }
+                  : se
+              );
+            } else {
+              newStatusEffects = [...u.statusEffects, {
+                type: sed.type,
+                remainingTurns: sed.remainingTurns,
+                damage: sed.damage,
+                sourceId: sed.sourceId,
+              }];
+            }
+            let newBuffs = [...u.buffs];
+            if (sed.statModifier) {
+              const existingBuff = newBuffs.find(b => b.stat === sed.statModifier!.stat);
+              if (existingBuff) {
+                newBuffs = newBuffs.map(b =>
+                  b.stat === sed.statModifier!.stat
+                    ? { ...b, value: Math.min(b.value, sed.statModifier!.value), remainingTurns: Math.max(b.remainingTurns, sed.remainingTurns) }
+                    : b
+                );
+              } else {
+                newBuffs.push({
+                  stat: sed.statModifier.stat,
+                  value: sed.statModifier.value,
+                  remainingTurns: sed.remainingTurns,
+                });
+              }
+            }
+            return { ...u, statusEffects: newStatusEffects, buffs: newBuffs };
+          });
         }
       }
 
-      if (log.type === 'elementAdvantage' || log.type === 'combo') {
-        // visual only - no state change
+      if (log.type === 'skill') {
+        const actorId = log.sourceId!;
+        findAndApply(actorId, u => ({
+          ...u,
+          comboCount: log.comboCount ?? u.comboCount,
+          skills: u.skills.map(s =>
+            s.skillId === log.skillId
+              ? { ...s, currentCooldown: log.skillCooldown ?? s.cooldown }
+              : s
+          ),
+        }));
       }
 
-      newPlayerUnits = newPlayerUnits.map(u => ({
-        ...u,
-        buffs: u.buffs
-          .map(b => ({ ...b, remainingTurns: b.remainingTurns - 1 }))
-          .filter(b => b.remainingTurns > 0),
-      }));
+      if (log.type === 'combo') {
+        const actorId = log.sourceId!;
+        findAndApply(actorId, u => ({
+          ...u,
+          comboCount: log.comboCount ?? u.comboCount,
+        }));
+      }
 
-      newEnemyUnits = newEnemyUnits.map(u => ({
-        ...u,
-        buffs: u.buffs
-          .map(b => ({ ...b, remainingTurns: b.remainingTurns - 1 }))
-          .filter(b => b.remainingTurns > 0),
-      }));
-
-      newPlayerUnits = newPlayerUnits.map(u => ({
-        ...u,
-        skills: u.skills.map(s => ({
-          ...s,
-          currentCooldown: Math.max(0, s.currentCooldown - 1),
-        })),
-      }));
-
-      newEnemyUnits = newEnemyUnits.map(u => ({
-        ...u,
-        skills: u.skills.map(s => ({
-          ...s,
-          currentCooldown: Math.max(0, s.currentCooldown - 1),
-        })),
-      }));
+      if (log.type === 'attack') {
+        const actorId = log.sourceId!;
+        findAndApply(actorId, u => ({
+          ...u,
+          comboCount: log.comboCount ?? u.comboCount,
+        }));
+      }
 
       return {
         playerUnits: newPlayerUnits,

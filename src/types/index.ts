@@ -208,13 +208,27 @@ export interface BattleUnit {
   isSkipTurn: boolean;
 }
 
+export interface StatusEffectPayload {
+  type: StatusEffectType;
+  remainingTurns: number;
+  damage: number;
+  sourceId: string;
+  skipTurnChance: number;
+  statModifier?: { stat: 'atk' | 'def' | 'spd'; value: number };
+}
+
+export interface BuffPayload {
+  stat: 'atk' | 'def' | 'spd';
+  value: number;
+  remainingTurns: number;
+}
+
 export interface BattleLogEntry {
   id?: string;
   timestamp: number;
   type: BattleLogType;
   turn?: number;
   message: string;
-  actorId?: string;
   targetId?: string;
   value?: number;
   skillId?: string;
@@ -228,6 +242,14 @@ export interface BattleLogEntry {
   isElementDisadvantage?: boolean;
   statusType?: StatusEffectType;
   comboCount?: number;
+  statusEffectData?: StatusEffectPayload;
+  statusRemainingTurns?: number;
+  buffData?: BuffPayload;
+  attackerElement?: Element;
+  defenderElement?: Element;
+  comboMultiplier?: number;
+  skillCooldown?: number;
+  isSkipTurn?: boolean;
 }
 
 export interface BattleRecord {

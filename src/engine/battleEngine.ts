@@ -4,6 +4,8 @@ import type {
   BattleLogEntry,
   BattleSkill,
   BattleSide,
+  StatusEffectPayload,
+  BuffPayload,
 } from '@/types';
 import { getAnimalTemplate } from '@/data/animals';
 import { getSkillTemplate } from '@/data/skills';
@@ -259,6 +261,7 @@ export const processStatusEffects = (
           targetName: unit.name,
           value: se.damage,
           statusType: se.type,
+          statusRemainingTurns: se.remainingTurns - 1,
           message: `${config.emoji} ${unit.name} 受到${config.name}伤害 ${se.damage}！`,
         });
 
@@ -303,33 +306,45 @@ export const tryApplyStatusEffect = (
   const { type, chance: applyChance, duration, damage } = skill.statusEffect;
   if (!chance(applyChance)) return null;
 
+  const actualDamage = damage || STATUS_EFFECT_CONFIG[type].baseDamage;
+  const actualDuration = duration;
+  const config = STATUS_EFFECT_CONFIG[type];
+
   const existing = target.statusEffects.find(se => se.type === type);
   if (existing) {
-    existing.remainingTurns = Math.max(existing.remainingTurns, duration);
-    existing.damage = damage || STATUS_EFFECT_CONFIG[type].baseDamage;
+    existing.remainingTurns = Math.max(existing.remainingTurns, actualDuration);
+    existing.damage = actualDamage;
   } else {
     target.statusEffects.push({
       type,
-      remainingTurns: duration,
-      damage: damage || STATUS_EFFECT_CONFIG[type].baseDamage,
+      remainingTurns: actualDuration,
+      damage: actualDamage,
       sourceId: attacker.id,
     });
   }
 
-  const config = STATUS_EFFECT_CONFIG[type];
   if (config.statModifier) {
     const existingBuff = target.buffs.find(b => b.stat === config.statModifier!.stat);
     if (existingBuff) {
       existingBuff.value = Math.min(existingBuff.value, config.statModifier.value);
-      existingBuff.remainingTurns = Math.max(existingBuff.remainingTurns, duration);
+      existingBuff.remainingTurns = Math.max(existingBuff.remainingTurns, actualDuration);
     } else {
       target.buffs.push({
         stat: config.statModifier.stat,
         value: config.statModifier.value,
-        remainingTurns: duration,
+        remainingTurns: actualDuration,
       });
     }
   }
+
+  const payload: StatusEffectPayload = {
+    type,
+    remainingTurns: actualDuration,
+    damage: actualDamage,
+    sourceId: attacker.id,
+    skipTurnChance: config.skipTurnChance,
+    statModifier: config.statModifier ? { ...config.statModifier } : undefined,
+  };
 
   return {
     timestamp: Date.now(),
@@ -339,7 +354,8 @@ export const tryApplyStatusEffect = (
     targetId: target.id,
     targetName: target.name,
     statusType: type,
-    message: `${config.emoji} ${target.name} 被施加了${config.name}！持续${duration}回合`,
+    statusEffectData: payload,
+    message: `${config.emoji} ${target.name} 被施加了${config.name}！持续${actualDuration}回合`,
   };
 };
 
@@ -363,6 +379,11 @@ export const executeSkill = (
   }
   attacker.comboCount++;
 
+  const comboMultiplier = Math.min(
+    1 + (attacker.comboCount - 1) * BATTLE_CONSTANTS.COMBO_DAMAGE_BONUS_PER_HIT,
+    BATTLE_CONSTANTS.COMBO_MAX_MULTIPLIER
+  );
+
   logs.push({
     id: generateId('log'),
     timestamp: Date.now(),
@@ -373,6 +394,8 @@ export const executeSkill = (
     skillName: skill.name,
     element: skill.element,
     comboCount: attacker.comboCount > 1 ? attacker.comboCount : undefined,
+    comboMultiplier: attacker.comboCount > 1 ? comboMultiplier : undefined,
+    skillCooldown: skill.cooldown,
     message: attacker.comboCount > 1
       ? `${attacker.name} 使用了 ${skill.emoji} ${skill.name}！🔥 ${attacker.comboCount}连击！`
       : `${attacker.name} 使用了 ${skill.emoji} ${skill.name}！`,
@@ -385,6 +408,7 @@ export const executeSkill = (
       sourceId: attacker.id,
       sourceName: attacker.name,
       comboCount: attacker.comboCount,
+      comboMultiplier,
       message: `🔥 ${attacker.comboCount}连击！伤害加成 +${Math.floor((attacker.comboCount - 1) * BATTLE_CONSTANTS.COMBO_DAMAGE_BONUS_PER_HIT * 100)}%`,
     });
   }
@@ -407,12 +431,18 @@ export const executeSkill = (
       });
     } else if (skill.type === 'buff') {
       if (skill.effect?.stat && skill.effect?.value !== undefined) {
+        const buffDuration = skill.effect.duration || 2;
         t.buffs = t.buffs.filter(b => b.stat !== skill.effect!.stat);
         t.buffs.push({
           stat: skill.effect.stat,
           value: skill.effect.value,
-          remainingTurns: skill.effect.duration || 2,
+          remainingTurns: buffDuration,
         });
+        const buffPayload: BuffPayload = {
+          stat: skill.effect.stat,
+          value: skill.effect.value,
+          remainingTurns: buffDuration,
+        };
         logs.push({
           timestamp: Date.now(),
           type: 'buff',
@@ -421,17 +451,24 @@ export const executeSkill = (
           targetId: t.id,
           targetName: t.name,
           value: skill.effect.value,
+          buffData: buffPayload,
           message: `${t.name} 获得了 ${skill.effect.stat.toUpperCase()} +${skill.effect.value}% 增益！`,
         });
       }
     } else if (skill.type === 'debuff') {
       if (skill.effect?.stat && skill.effect?.value !== undefined) {
+        const debuffDuration = skill.effect.duration || 2;
         t.buffs = t.buffs.filter(b => b.stat !== skill.effect!.stat);
         t.buffs.push({
           stat: skill.effect.stat,
           value: skill.effect.value,
-          remainingTurns: skill.effect.duration || 2,
+          remainingTurns: debuffDuration,
         });
+        const debuffPayload: BuffPayload = {
+          stat: skill.effect.stat,
+          value: skill.effect.value,
+          remainingTurns: debuffDuration,
+        };
         logs.push({
           timestamp: Date.now(),
           type: 'debuff',
@@ -440,6 +477,7 @@ export const executeSkill = (
           targetId: t.id,
           targetName: t.name,
           value: skill.effect.value,
+          buffData: debuffPayload,
           message: `${t.name} 受到 ${skill.effect.stat.toUpperCase()} ${skill.effect.value}% 减益！`,
         });
       }
@@ -456,6 +494,8 @@ export const executeSkill = (
             targetId: t.id,
             targetName: t.name,
             element: skill.element || attacker.element,
+            attackerElement: skill.element || attacker.element,
+            defenderElement: t.element,
             isElementAdvantage: true,
             message: `✦ 属性克制！${ELEMENT_EMOJIS[skill.element || attacker.element]}${ELEMENT_NAMES[skill.element || attacker.element]}克制${ELEMENT_NAMES[t.element]}！伤害 ×${BATTLE_CONSTANTS.ELEMENT_ADVANTAGE_MULTIPLIER}`,
           });
@@ -471,6 +511,8 @@ export const executeSkill = (
           value: dmgResult.damage,
           isCrit: dmgResult.isCrit,
           isElementAdvantage: dmgResult.isElementAdvantage,
+          comboCount: attacker.comboCount > 1 ? attacker.comboCount : undefined,
+          comboMultiplier: attacker.comboCount > 1 ? comboMultiplier : undefined,
           message: dmgResult.isCrit
             ? `💥 暴击！${t.name} 受到 ${dmgResult.damage} 点伤害！`
             : `${t.name} 受到 ${dmgResult.damage} 点伤害！`,
@@ -492,6 +534,8 @@ export const executeSkill = (
           targetId: t.id,
           targetName: t.name,
           element: skill.element || attacker.element,
+          attackerElement: skill.element || attacker.element,
+          defenderElement: t.element,
           isElementAdvantage: true,
           message: `✦ 属性克制！${ELEMENT_EMOJIS[skill.element || attacker.element]}${ELEMENT_NAMES[skill.element || attacker.element]}克制${ELEMENT_NAMES[t.element]}！伤害 ×${BATTLE_CONSTANTS.ELEMENT_ADVANTAGE_MULTIPLIER}`,
         });
@@ -508,6 +552,7 @@ export const executeSkill = (
         isCrit: dmgResult.isCrit,
         isElementAdvantage: dmgResult.isElementAdvantage,
         comboCount: attacker.comboCount > 1 ? attacker.comboCount : undefined,
+        comboMultiplier: attacker.comboCount > 1 ? comboMultiplier : undefined,
         message: dmgResult.isCrit
           ? `💥 暴击！${t.name} 受到 ${dmgResult.damage} 点伤害！`
           : `${t.name} 受到 ${dmgResult.damage} 点伤害！`,
@@ -547,6 +592,11 @@ export const executeBasicAttack = (
 
   attacker.comboCount++;
 
+  const comboMultiplier = Math.min(
+    1 + (attacker.comboCount - 1) * BATTLE_CONSTANTS.COMBO_DAMAGE_BONUS_PER_HIT,
+    BATTLE_CONSTANTS.COMBO_MAX_MULTIPLIER
+  );
+
   const dmgResult = calculateDamage(attacker, target, 0);
   target.currentHp = Math.max(0, target.currentHp - dmgResult.damage);
 
@@ -559,6 +609,8 @@ export const executeBasicAttack = (
       targetId: target.id,
       targetName: target.name,
       element: attacker.element,
+      attackerElement: attacker.element,
+      defenderElement: target.element,
       isElementAdvantage: true,
       message: `✦ 属性克制！${ELEMENT_EMOJIS[attacker.element]}${ELEMENT_NAMES[attacker.element]}克制${ELEMENT_NAMES[target.element]}！伤害 ×${BATTLE_CONSTANTS.ELEMENT_ADVANTAGE_MULTIPLIER}`,
     });
@@ -575,6 +627,7 @@ export const executeBasicAttack = (
     isCrit: dmgResult.isCrit,
     isElementAdvantage: dmgResult.isElementAdvantage,
     comboCount: attacker.comboCount > 1 ? attacker.comboCount : undefined,
+    comboMultiplier: attacker.comboCount > 1 ? comboMultiplier : undefined,
     message: dmgResult.isCrit
       ? `💥 暴击！${attacker.name} 攻击 ${target.name}，造成 ${dmgResult.damage} 点伤害！`
       : `${attacker.name} 攻击 ${target.name}，造成 ${dmgResult.damage} 点伤害！`,
@@ -587,6 +640,7 @@ export const executeBasicAttack = (
       sourceId: attacker.id,
       sourceName: attacker.name,
       comboCount: attacker.comboCount,
+      comboMultiplier,
       message: `🔥 ${attacker.comboCount}连击！伤害加成 +${Math.floor((attacker.comboCount - 1) * BATTLE_CONSTANTS.COMBO_DAMAGE_BONUS_PER_HIT * 100)}%`,
     });
   }
@@ -679,16 +733,25 @@ export const simulateFullBattle = (
       if (!isTeamAlive(playerUnits) || !isTeamAlive(enemyUnits)) break;
 
       if (checkSkipTurn(unit)) {
-        const config = unit.statusEffects
+        const skipStatus = unit.statusEffects
           .filter(se => STATUS_EFFECT_CONFIG[se.type].skipTurnChance > 0)
-          .map(se => STATUS_EFFECT_CONFIG[se.type])
           .find(() => true);
+        const config = skipStatus ? STATUS_EFFECT_CONFIG[skipStatus.type] : null;
         fullBattleLog.push({
           timestamp: Date.now(),
           type: 'statusTick',
           targetId: unit.id,
           targetName: unit.name,
-          statusType: unit.statusEffects.find(se => STATUS_EFFECT_CONFIG[se.type].skipTurnChance > 0)?.type,
+          statusType: skipStatus?.type,
+          isSkipTurn: true,
+          statusEffectData: skipStatus ? {
+            type: skipStatus.type,
+            remainingTurns: skipStatus.remainingTurns,
+            damage: skipStatus.damage,
+            sourceId: skipStatus.sourceId,
+            skipTurnChance: STATUS_EFFECT_CONFIG[skipStatus.type].skipTurnChance,
+            statModifier: STATUS_EFFECT_CONFIG[skipStatus.type].statModifier,
+          } : undefined,
           message: `${config?.emoji || '⏸'} ${unit.name} 因${config?.name || '异常状态'}无法行动！`,
         });
         continue;
