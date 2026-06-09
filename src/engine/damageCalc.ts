@@ -1,11 +1,39 @@
-import type { BattleUnit, DamageResult } from '@/types';
-import { BATTLE_CONSTANTS } from './constants';
+import type { BattleUnit, DamageResult, Element } from '@/types';
+import { BATTLE_CONSTANTS, hasElementAdvantage, hasElementDisadvantage, STATUS_EFFECT_CONFIG } from './constants';
 import { chance, clamp, random } from '@/utils/random';
+
+export const getElementMultiplier = (
+  attackerElement: Element,
+  defenderElement: Element
+): { multiplier: number; isAdvantage: boolean; isDisadvantage: boolean } => {
+  if (hasElementAdvantage(attackerElement, defenderElement)) {
+    return {
+      multiplier: BATTLE_CONSTANTS.ELEMENT_ADVANTAGE_MULTIPLIER,
+      isAdvantage: true,
+      isDisadvantage: false,
+    };
+  }
+  if (hasElementDisadvantage(attackerElement, defenderElement)) {
+    return {
+      multiplier: BATTLE_CONSTANTS.ELEMENT_DISADVANTAGE_MULTIPLIER,
+      isAdvantage: false,
+      isDisadvantage: true,
+    };
+  }
+  return { multiplier: 1, isAdvantage: false, isDisadvantage: false };
+};
+
+export const getComboMultiplier = (comboCount: number): number => {
+  if (comboCount <= 1) return 1;
+  const bonus = (comboCount - 1) * BATTLE_CONSTANTS.COMBO_DAMAGE_BONUS_PER_HIT;
+  return Math.min(1 + bonus, BATTLE_CONSTANTS.COMBO_MAX_MULTIPLIER);
+};
 
 export const calculateDamage = (
   attacker: BattleUnit,
   defender: BattleUnit,
-  skillDamage: number = 0
+  skillDamage: number = 0,
+  skillElement?: Element
 ): DamageResult => {
   const atkBonus = attacker.buffs
     .filter(b => b.stat === 'atk')
@@ -14,8 +42,18 @@ export const calculateDamage = (
     .filter(b => b.stat === 'def')
     .reduce((sum, b) => sum + b.value, 0);
 
-  const finalAtk = attacker.atk * (1 + atkBonus / 100);
-  const finalDef = defender.def * (1 + defBonus / 100);
+  const statusAtkMod = attacker.statusEffects.reduce((sum, se) => {
+    const config = STATUS_EFFECT_CONFIG[se.type];
+    return sum + (config?.statModifier?.stat === 'atk' ? config.statModifier.value : 0);
+  }, 0);
+
+  const statusDefMod = defender.statusEffects.reduce((sum, se) => {
+    const config = STATUS_EFFECT_CONFIG[se.type];
+    return sum + (config?.statModifier?.stat === 'def' ? config.statModifier.value : 0);
+  }, 0);
+
+  const finalAtk = attacker.atk * (1 + (atkBonus + statusAtkMod) / 100);
+  const finalDef = defender.def * (1 + (defBonus + statusDefMod) / 100);
 
   let baseDamage = finalAtk - finalDef * BATTLE_CONSTANTS.DEFENSE_FACTOR;
   baseDamage += skillDamage;
@@ -23,9 +61,15 @@ export const calculateDamage = (
   const isCrit = chance(BATTLE_CONSTANTS.BASE_CRIT_RATE);
   const critMultiplier = isCrit ? BATTLE_CONSTANTS.BASE_CRIT_DAMAGE : 1;
 
+  const effectiveElement = skillElement || attacker.element;
+  const { multiplier: elementMultiplier, isAdvantage, isDisadvantage } =
+    getElementMultiplier(effectiveElement, defender.element);
+
+  const comboMultiplier = getComboMultiplier(attacker.comboCount);
+
   const randomFactor = 1 + random(-BATTLE_CONSTANTS.RANDOM_DAMAGE_RANGE, BATTLE_CONSTANTS.RANDOM_DAMAGE_RANGE);
 
-  let finalDamage = Math.floor(baseDamage * critMultiplier * randomFactor);
+  let finalDamage = Math.floor(baseDamage * critMultiplier * elementMultiplier * comboMultiplier * randomFactor);
   finalDamage = clamp(finalDamage, 1, 9999);
 
   const isBlocked = finalDamage <= 1 && baseDamage < defender.def * 0.3;
@@ -34,7 +78,20 @@ export const calculateDamage = (
     damage: finalDamage,
     isCrit,
     isBlocked,
+    isElementAdvantage: isAdvantage,
+    isElementDisadvantage: isDisadvantage,
+    elementAdvantageMultiplier: elementMultiplier,
   };
+};
+
+export const calculateStatusDamage = (unit: BattleUnit): { type: string; damage: number }[] => {
+  const results: { type: string; damage: number }[] = [];
+  for (const se of unit.statusEffects) {
+    if (se.damage > 0) {
+      results.push({ type: se.type, damage: se.damage });
+    }
+  }
+  return results;
 };
 
 export const calculateHeal = (

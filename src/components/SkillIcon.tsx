@@ -1,6 +1,7 @@
 import { cn } from '@/lib/utils';
-import type { Skill, BattleSkill, EquippedSkill, SkillTemplate } from '@/types';
+import type { Skill, BattleSkill, EquippedSkill, SkillTemplate, Element } from '@/types';
 import { getSkillTemplate } from '@/data/skills';
+import { ELEMENT_EMOJIS, ELEMENT_COLORS, STATUS_EFFECT_CONFIG } from '@/engine/constants';
 
 interface SkillIconProps {
   skill: Skill | SkillTemplate | BattleSkill | EquippedSkill | string;
@@ -57,6 +58,8 @@ export const SkillIcon = ({
   };
 
   const isOnCooldown = cooldown > 0;
+  const skillElement: Element | undefined = 'element' in template ? template.element : undefined;
+  const elementColor = skillElement ? ELEMENT_COLORS[skillElement] : undefined;
 
   return (
     <div className={cn('flex flex-col items-center gap-1', className)}>
@@ -73,13 +76,35 @@ export const SkillIcon = ({
           (disabled || isOnCooldown) && 'opacity-50 cursor-not-allowed',
           isOnCooldown && 'grayscale'
         )}
-        title={`${template.name} - ${template.description}`}
+        style={elementColor ? { boxShadow: `0 0 10px ${elementColor}40` } : undefined}
+        title={`${template.name} - ${template.description}${skillElement ? ` (${ELEMENT_EMOJIS[skillElement]}${skillElement})` : ''}`}
       >
         <span className={cn(isOnCooldown && 'opacity-50')}>{template.emoji}</span>
 
         {level && level > 1 && (
           <span className="absolute -top-1 -right-1 w-5 h-5 bg-cyber-yellow text-cyber-darker text-xs font-bold rounded-full flex items-center justify-center">
             {level}
+          </span>
+        )}
+
+        {skillElement && (
+          <span
+            className="absolute -bottom-1 -left-1 w-4 h-4 rounded-full flex items-center justify-center text-[8px] border border-white/30 bg-cyber-darker"
+            style={{ boxShadow: `0 0 6px ${ELEMENT_COLORS[skillElement]}` }}
+          >
+            {ELEMENT_EMOJIS[skillElement]}
+          </span>
+        )}
+
+        {'statusEffect' in template && template.statusEffect && (
+          <span
+            className="absolute -top-1 -left-1 w-4 h-4 rounded-full flex items-center justify-center text-[8px] border border-white/30"
+            style={{
+              backgroundColor: `${STATUS_EFFECT_CONFIG[template.statusEffect.type].color}60`,
+              boxShadow: `0 0 6px ${STATUS_EFFECT_CONFIG[template.statusEffect.type].color}`,
+            }}
+          >
+            {STATUS_EFFECT_CONFIG[template.statusEffect.type].emoji}
           </span>
         )}
 

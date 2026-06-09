@@ -6,7 +6,11 @@ export type SkillType = 'attack' | 'heal' | 'buff' | 'debuff' | 'special';
 
 export type BattleSide = 'player' | 'enemy';
 
-export type BattleLogType = 'damage' | 'crit' | 'heal' | 'skill' | 'buff' | 'debuff' | 'death' | 'turnStart' | 'battleEnd' | 'info' | 'attack' | 'victory';
+export type Element = 'fire' | 'ice' | 'thunder' | 'nature' | 'dark';
+
+export type StatusEffectType = 'poison' | 'burn' | 'freeze' | 'paralysis' | 'bleed';
+
+export type BattleLogType = 'damage' | 'crit' | 'heal' | 'skill' | 'buff' | 'debuff' | 'death' | 'turnStart' | 'battleEnd' | 'info' | 'attack' | 'victory' | 'elementAdvantage' | 'statusTick' | 'statusApply' | 'combo';
 
 export interface AnimalTemplate {
   id: string;
@@ -19,6 +23,7 @@ export interface AnimalTemplate {
   baseDef: number;
   baseSpd: number;
   rarity: Rarity;
+  element: Element;
 }
 
 export interface PartTemplate {
@@ -47,12 +52,19 @@ export interface SkillTemplate {
   cost: number;
   emoji: string;
   rarity: Rarity;
+  element?: Element;
   effect?: {
     stat?: 'atk' | 'def' | 'spd';
     value?: number;
     duration?: number;
     healPercent?: number;
     aoe?: boolean;
+  };
+  statusEffect?: {
+    type: StatusEffectType;
+    chance: number;
+    duration: number;
+    damage?: number;
   };
   target?: 'single' | 'all' | 'self' | 'random';
   chance?: number;
@@ -120,12 +132,19 @@ export interface Skill {
   cost: number;
   emoji: string;
   rarity: Rarity;
+  element?: Element;
   effect?: {
     stat?: 'atk' | 'def' | 'spd';
     value?: number;
     duration?: number;
     healPercent?: number;
     aoe?: boolean;
+  };
+  statusEffect?: {
+    type: StatusEffectType;
+    chance: number;
+    duration: number;
+    damage?: number;
   };
   target?: 'single' | 'all' | 'self' | 'random';
   chance?: number;
@@ -139,12 +158,19 @@ export interface BattleSkill {
   cooldown: number;
   currentCooldown: number;
   emoji: string;
+  element?: Element;
   effect?: {
     stat?: 'atk' | 'def' | 'spd';
     value?: number;
     duration?: number;
     healPercent?: number;
     aoe?: boolean;
+  };
+  statusEffect?: {
+    type: StatusEffectType;
+    chance: number;
+    duration: number;
+    damage?: number;
   };
 }
 
@@ -154,11 +180,19 @@ export interface BattleBuff {
   remainingTurns: number;
 }
 
+export interface StatusEffect {
+  type: StatusEffectType;
+  remainingTurns: number;
+  damage: number;
+  sourceId: string;
+}
+
 export interface BattleUnit {
   id: string;
   animalId: string;
   name: string;
   emoji: string;
+  element: Element;
   maxHp: number;
   currentHp: number;
   atk: number;
@@ -169,6 +203,9 @@ export interface BattleUnit {
   side: BattleSide;
   position: number;
   buffs: BattleBuff[];
+  statusEffects: StatusEffect[];
+  comboCount: number;
+  isSkipTurn: boolean;
 }
 
 export interface BattleLogEntry {
@@ -186,6 +223,11 @@ export interface BattleLogEntry {
   targetName?: string;
   skillName?: string;
   isCrit?: boolean;
+  element?: Element;
+  isElementAdvantage?: boolean;
+  isElementDisadvantage?: boolean;
+  statusType?: StatusEffectType;
+  comboCount?: number;
 }
 
 export interface BattleRecord {
@@ -223,7 +265,7 @@ export interface DamageNumber {
   x: number;
   y: number;
   value: number;
-  type: 'normal' | 'crit' | 'heal';
+  type: 'normal' | 'crit' | 'heal' | 'combo' | 'elementAdvantage' | 'statusTick';
   opacity: number;
 }
 
@@ -274,4 +316,5 @@ export interface DamageResult {
   isBlocked?: boolean;
   isElementAdvantage?: boolean;
   isElementDisadvantage?: boolean;
+  elementAdvantageMultiplier?: number;
 }

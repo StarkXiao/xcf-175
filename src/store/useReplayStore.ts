@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { BattleUnit, BattleLogEntry, BattleRecord } from '@/types';
+import type { BattleUnit, BattleLogEntry, BattleRecord, StatusEffect } from '@/types';
 import { BATTLE_CONSTANTS } from '@/engine/constants';
 
 interface ReplayState {
@@ -126,7 +126,7 @@ export const useReplayStore = create<ReplayState>((set, get) => ({
 
     for (let i = 0; i <= clampedIndex; i++) {
       const log = state.battleLog[i];
-      if (log.type === 'damage' || log.type === 'crit') {
+      if (log.type === 'damage' || log.type === 'crit' || log.type === 'statusTick') {
         const targetId = log.targetId;
         const damage = log.value || 0;
         const isEnemyTarget = enemyUnits.some((u: BattleUnit) => u.id === targetId);
@@ -178,6 +178,31 @@ export const useReplayStore = create<ReplayState>((set, get) => ({
           );
         }
       }
+
+      if (log.type === 'statusApply') {
+        const targetId = log.targetId;
+        const isEnemyTarget = enemyUnits.some((u: BattleUnit) => u.id === targetId);
+        const newStatusEffect: StatusEffect = {
+          type: log.statusType!,
+          damage: log.value || 0,
+          sourceId: log.sourceId || '',
+          remainingTurns: 3,
+        };
+
+        if (isEnemyTarget) {
+          enemyUnits = enemyUnits.map((u: BattleUnit) =>
+            u.id === targetId
+              ? { ...u, statusEffects: [...u.statusEffects, newStatusEffect] }
+              : u
+          );
+        } else {
+          playerUnits = playerUnits.map((u: BattleUnit) =>
+            u.id === targetId
+              ? { ...u, statusEffects: [...u.statusEffects, newStatusEffect] }
+              : u
+          );
+        }
+      }
     }
 
     set({
@@ -213,7 +238,7 @@ export const useReplayStore = create<ReplayState>((set, get) => ({
       let newPlayerUnits = [...state.playerUnits];
       let newEnemyUnits = [...state.enemyUnits];
 
-      if (log.type === 'damage' || log.type === 'crit') {
+      if (log.type === 'damage' || log.type === 'crit' || log.type === 'statusTick') {
         const targetId = log.targetId;
         const damage = log.value || 0;
         const isEnemyTarget = newEnemyUnits.some(u => u.id === targetId);
@@ -295,6 +320,31 @@ export const useReplayStore = create<ReplayState>((set, get) => ({
                     { stat: 'atk' as const, value: buffValue, remainingTurns: 3 },
                   ],
                 }
+              : u
+          );
+        }
+      }
+
+      if (log.type === 'statusApply') {
+        const targetId = log.targetId;
+        const isEnemyTarget = newEnemyUnits.some(u => u.id === targetId);
+        const newStatusEffect: StatusEffect = {
+          type: log.statusType!,
+          damage: log.value || 0,
+          sourceId: log.sourceId || '',
+          remainingTurns: 3,
+        };
+
+        if (isEnemyTarget) {
+          newEnemyUnits = newEnemyUnits.map(u =>
+            u.id === targetId
+              ? { ...u, statusEffects: [...u.statusEffects, newStatusEffect] }
+              : u
+          );
+        } else {
+          newPlayerUnits = newPlayerUnits.map(u =>
+            u.id === targetId
+              ? { ...u, statusEffects: [...u.statusEffects, newStatusEffect] }
               : u
           );
         }

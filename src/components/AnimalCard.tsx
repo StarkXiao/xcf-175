@@ -3,7 +3,7 @@ import type { Animal } from '@/types';
 import { getAnimalTemplate } from '@/data/animals';
 import { getRarityColor, getRarityStars } from '@/utils/format';
 import { calculateAnimalStats } from '@/engine/battleEngine';
-import { HealthBar } from './HealthBar';
+import { ELEMENT_EMOJIS, ELEMENT_COLORS, ELEMENT_NAMES } from '@/engine/constants';
 import { StatBar } from './StatBar';
 import { SkillIcon } from './SkillIcon';
 import { getPartTemplate } from '@/data/parts';
@@ -98,10 +98,16 @@ export const AnimalCard = ({
             width: compact ? '60px' : '80px',
             height: compact ? '60px' : '80px',
             border: `2px solid ${rarityColor}`,
-            boxShadow: `0 0 15px ${rarityColor}40`,
+            boxShadow: `0 0 15px ${rarityColor}40, 0 0 25px ${ELEMENT_COLORS[template.element]}20`,
           }}
         >
           <span className={cn(compact ? 'text-3xl' : 'text-5xl')}>{template.emoji}</span>
+          <div
+            className="absolute -top-1 -left-1 w-5 h-5 rounded-full flex items-center justify-center text-[10px] border border-white/30 bg-cyber-darker"
+            style={{ boxShadow: `0 0 6px ${ELEMENT_COLORS[template.element]}` }}
+          >
+            {ELEMENT_EMOJIS[template.element]}
+          </div>
         </div>
 
         <div className="flex-1 min-w-0">
@@ -111,6 +117,16 @@ export const AnimalCard = ({
             </h3>
             <span className="text-xs px-2 py-0.5 bg-gray-800 rounded text-gray-300 font-cyber">
               Lv.{animal.level}
+            </span>
+            <span
+              className="text-xs px-2 py-0.5 rounded flex items-center gap-1"
+              style={{
+                backgroundColor: `${ELEMENT_COLORS[template.element]}20`,
+                color: ELEMENT_COLORS[template.element],
+                border: `1px solid ${ELEMENT_COLORS[template.element]}40`,
+              }}
+            >
+              {ELEMENT_EMOJIS[template.element]} {ELEMENT_NAMES[template.element]}
             </span>
           </div>
 

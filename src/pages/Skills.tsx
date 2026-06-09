@@ -7,9 +7,9 @@ import { AnimalCard } from '@/components/AnimalCard';
 import { SkillIcon } from '@/components/SkillIcon';
 import { Empty } from '@/components/Empty';
 import { useGameStore } from '@/store/useGameStore';
-import type { Animal, Skill } from '@/types';
+import type { Animal } from '@/types';
 import { getSkillTemplate } from '@/data/skills';
-import { BATTLE_CONSTANTS } from '@/engine/constants';
+import { BATTLE_CONSTANTS, ELEMENT_EMOJIS, ELEMENT_COLORS, ELEMENT_NAMES, STATUS_EFFECT_CONFIG } from '@/engine/constants';
 
 const MAX_SKILLS_PER_ANIMAL = BATTLE_CONSTANTS.MAX_SKILLS_PER_ANIMAL;
 
@@ -46,7 +46,6 @@ export default function Skills() {
 
   const handleUnequipSkill = (index: number) => {
     if (!selectedAnimal) return;
-    const skill = selectedAnimal.skills[index];
     unequipSkill(selectedAnimal.id, index);
     setSelectedAnimal(prev => prev ? {
       ...prev,
@@ -114,11 +113,30 @@ export default function Skills() {
                               <span className="text-xs px-2 py-0.5 bg-cyber-pink/20 text-cyber-pink rounded">
                                 Lv.{equipped.level}
                               </span>
+                              {template.element && (
+                                <span
+                                  className="text-xs px-2 py-0.5 rounded flex items-center gap-1"
+                                  style={{
+                                    backgroundColor: `${ELEMENT_COLORS[template.element]}20`,
+                                    color: ELEMENT_COLORS[template.element],
+                                    border: `1px solid ${ELEMENT_COLORS[template.element]}40`,
+                                  }}
+                                >
+                                  {ELEMENT_EMOJIS[template.element]} {ELEMENT_NAMES[template.element]}
+                                </span>
+                              )}
                             </div>
                             <p className="text-xs text-gray-400 mt-1">{template.description}</p>
                             <div className="flex gap-4 mt-2 text-xs text-gray-500">
                               <span>伤害: {template.damage}</span>
                               <span>CD: {template.cooldown}回合</span>
+                              {template.statusEffect && (
+                                <span
+                                  style={{ color: STATUS_EFFECT_CONFIG[template.statusEffect.type].color }}
+                                >
+                                  {STATUS_EFFECT_CONFIG[template.statusEffect.type].emoji} {STATUS_EFFECT_CONFIG[template.statusEffect.type].name} {template.statusEffect.chance}%
+                                </span>
+                              )}
                             </div>
                           </div>
                           <NeonButton
@@ -219,6 +237,20 @@ export default function Skills() {
                           <div className="flex gap-3 mt-2 text-xs text-gray-500">
                             <span>伤害: {skill.damage}</span>
                             <span>CD: {skill.cooldown}回合</span>
+                            {skill.element && (
+                              <span
+                                style={{ color: ELEMENT_COLORS[skill.element] }}
+                              >
+                                {ELEMENT_EMOJIS[skill.element]} {ELEMENT_NAMES[skill.element]}
+                              </span>
+                            )}
+                            {skill.statusEffect && (
+                              <span
+                                style={{ color: STATUS_EFFECT_CONFIG[skill.statusEffect.type].color }}
+                              >
+                                {STATUS_EFFECT_CONFIG[skill.statusEffect.type].emoji} {STATUS_EFFECT_CONFIG[skill.statusEffect.type].name}
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>

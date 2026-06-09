@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { BattleUnit, BattleLogEntry, BattleRecord, BattleSide } from '@/types';
+import type { BattleUnit, BattleLogEntry, BattleRecord, StatusEffect } from '@/types';
 import { BATTLE_CONSTANTS } from '@/engine/constants';
 
 interface BattleState {
@@ -152,7 +152,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       let newPlayerUnits = [...state.playerUnits];
       let newEnemyUnits = [...state.enemyUnits];
 
-      if (log.type === 'damage' || log.type === 'crit') {
+      if (log.type === 'damage' || log.type === 'crit' || log.type === 'statusTick') {
         const targetId = log.targetId;
         const damage = log.value || 0;
         const isEnemyTarget = newEnemyUnits.some(u => u.id === targetId);
@@ -237,6 +237,35 @@ export const useBattleStore = create<BattleState>((set, get) => ({
               : u
           );
         }
+      }
+
+      if (log.type === 'statusApply') {
+        const targetId = log.targetId;
+        const isEnemyTarget = newEnemyUnits.some(u => u.id === targetId);
+        const newStatusEffect: StatusEffect = {
+          type: log.statusType || 'poison',
+          remainingTurns: 3,
+          damage: log.value || 0,
+          sourceId: log.sourceId || log.actorId || '',
+        };
+
+        if (isEnemyTarget) {
+          newEnemyUnits = newEnemyUnits.map(u =>
+            u.id === targetId
+              ? { ...u, statusEffects: [...u.statusEffects, newStatusEffect] }
+              : u
+          );
+        } else {
+          newPlayerUnits = newPlayerUnits.map(u =>
+            u.id === targetId
+              ? { ...u, statusEffects: [...u.statusEffects, newStatusEffect] }
+              : u
+          );
+        }
+      }
+
+      if (log.type === 'elementAdvantage' || log.type === 'combo') {
+        // visual only - no state change
       }
 
       newPlayerUnits = newPlayerUnits.map(u => ({

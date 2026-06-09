@@ -298,7 +298,13 @@ export default function Replay() {
                     key={i}
                     className={`text-sm py-1 px-2 rounded ${
                       i === Math.min(10, currentLogIndex)
-                        ? 'bg-cyber-yellow/10 text-cyber-yellow'
+                        ? log.type === 'elementAdvantage'
+                          ? 'bg-cyber-yellow/10 text-cyber-yellow'
+                          : log.type === 'statusTick' || log.type === 'statusApply'
+                          ? 'bg-cyber-purple/10 text-cyber-purple'
+                          : log.type === 'combo'
+                          ? 'bg-cyber-red/10 text-cyber-red'
+                          : 'bg-cyber-yellow/10 text-cyber-yellow'
                         : 'text-gray-400'
                     }`}
                   >

@@ -1,5 +1,6 @@
 import { cn } from '@/lib/utils';
 import type { BattleUnit } from '@/types';
+import { ELEMENT_EMOJIS, ELEMENT_COLORS, ELEMENT_NAMES, STATUS_EFFECT_CONFIG } from '@/engine/constants';
 import { HealthBar } from './HealthBar';
 import { SkillIcon } from './SkillIcon';
 
@@ -19,7 +20,6 @@ export const BattleUnitDisplay = ({
   className,
 }: BattleUnitDisplayProps) => {
   const isPlayer = unit.side === 'player';
-  const hpPercent = (unit.currentHp / unit.maxHp) * 100;
 
   return (
     <div
@@ -55,11 +55,19 @@ export const BattleUnitDisplay = ({
           {unit.emoji}
         </span>
 
-        {unit.buffs.length > 0 && (
-          <div className="absolute -top-2 -right-2 flex gap-0.5">
-            {unit.buffs.slice(0, 3).map((buff, i) => (
+        <div
+          className="absolute -top-1 -left-1 w-6 h-6 rounded-full flex items-center justify-center text-xs border border-white/50 bg-cyber-darker"
+          style={{ boxShadow: `0 0 8px ${ELEMENT_COLORS[unit.element]}` }}
+          title={`${ELEMENT_NAMES[unit.element]}属性`}
+        >
+          {ELEMENT_EMOJIS[unit.element]}
+        </div>
+
+        {(unit.buffs.length > 0 || unit.statusEffects.length > 0) && (
+          <div className="absolute -top-2 -right-2 flex gap-0.5 flex-wrap max-w-[40px]">
+            {unit.buffs.slice(0, 2).map((buff, i) => (
               <div
-                key={i}
+                key={`buff-${i}`}
                 className={cn(
                   'w-5 h-5 rounded-full flex items-center justify-center text-xs border',
                   buff.value > 0
@@ -71,6 +79,23 @@ export const BattleUnitDisplay = ({
                 {buff.value > 0 ? '↑' : '↓'}
               </div>
             ))}
+            {unit.statusEffects.slice(0, 2).map((se, i) => {
+              const config = STATUS_EFFECT_CONFIG[se.type];
+              return (
+                <div
+                  key={`status-${i}`}
+                  className="w-5 h-5 rounded-full flex items-center justify-center text-xs border"
+                  style={{
+                    backgroundColor: `${config.color}40`,
+                    borderColor: config.color,
+                    color: config.color,
+                  }}
+                  title={`${config.name} (${se.remainingTurns}回合)`}
+                >
+                  {config.emoji}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -82,11 +107,37 @@ export const BattleUnitDisplay = ({
         )}>
           {unit.name}
         </div>
+        {unit.comboCount > 1 && (
+          <div className="text-xs font-cyber text-cyber-yellow animate-pulse">
+            🔥 {unit.comboCount}连击
+          </div>
+        )}
       </div>
 
       <div className="w-full">
         <HealthBar current={unit.currentHp} max={unit.maxHp} size="sm" />
       </div>
+
+      {unit.statusEffects.length > 0 && (
+        <div className="flex gap-1 mt-1 flex-wrap justify-center">
+          {unit.statusEffects.map((se, i) => {
+            const config = STATUS_EFFECT_CONFIG[se.type];
+            return (
+              <span
+                key={i}
+                className="text-xs px-1 py-0.5 rounded"
+                style={{
+                  backgroundColor: `${config.color}20`,
+                  color: config.color,
+                  border: `1px solid ${config.color}40`,
+                }}
+              >
+                {config.emoji}{se.remainingTurns}
+              </span>
+            );
+          })}
+        </div>
+      )}
 
       {showSkills && (
         <div className="flex gap-1 mt-2">

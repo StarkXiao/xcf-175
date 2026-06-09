@@ -12,6 +12,7 @@ export const ANIMAL_TEMPLATES: AnimalTemplate[] = [
     baseDef: 8,
     baseSpd: 18,
     rarity: 1,
+    element: 'nature',
   },
   {
     id: 'dog_stray',
@@ -24,6 +25,7 @@ export const ANIMAL_TEMPLATES: AnimalTemplate[] = [
     baseDef: 12,
     baseSpd: 14,
     rarity: 1,
+    element: 'fire',
   },
   {
     id: 'rat_sewer',
@@ -36,6 +38,7 @@ export const ANIMAL_TEMPLATES: AnimalTemplate[] = [
     baseDef: 5,
     baseSpd: 22,
     rarity: 1,
+    element: 'dark',
   },
   {
     id: 'pigeon_city',
@@ -48,6 +51,7 @@ export const ANIMAL_TEMPLATES: AnimalTemplate[] = [
     baseDef: 6,
     baseSpd: 25,
     rarity: 2,
+    element: 'nature',
   },
   {
     id: 'crow_urban',
@@ -60,6 +64,7 @@ export const ANIMAL_TEMPLATES: AnimalTemplate[] = [
     baseDef: 7,
     baseSpd: 20,
     rarity: 2,
+    element: 'dark',
   },
   {
     id: 'fox_alley',
@@ -72,6 +77,7 @@ export const ANIMAL_TEMPLATES: AnimalTemplate[] = [
     baseDef: 10,
     baseSpd: 19,
     rarity: 2,
+    element: 'fire',
   },
   {
     id: 'raccoon_trash',
@@ -84,6 +90,7 @@ export const ANIMAL_TEMPLATES: AnimalTemplate[] = [
     baseDef: 14,
     baseSpd: 12,
     rarity: 3,
+    element: 'nature',
   },
   {
     id: 'cat_black',
@@ -96,6 +103,7 @@ export const ANIMAL_TEMPLATES: AnimalTemplate[] = [
     baseDef: 9,
     baseSpd: 21,
     rarity: 3,
+    element: 'dark',
   },
   {
     id: 'goat_feral',
@@ -108,6 +116,7 @@ export const ANIMAL_TEMPLATES: AnimalTemplate[] = [
     baseDef: 18,
     baseSpd: 10,
     rarity: 3,
+    element: 'nature',
   },
   {
     id: 'boar_urban',
@@ -120,6 +129,7 @@ export const ANIMAL_TEMPLATES: AnimalTemplate[] = [
     baseDef: 20,
     baseSpd: 8,
     rarity: 4,
+    element: 'fire',
   },
   {
     id: 'snake_alley',
@@ -132,6 +142,7 @@ export const ANIMAL_TEMPLATES: AnimalTemplate[] = [
     baseDef: 6,
     baseSpd: 17,
     rarity: 4,
+    element: 'ice',
   },
   {
     id: 'turtle_sewer',
@@ -144,6 +155,7 @@ export const ANIMAL_TEMPLATES: AnimalTemplate[] = [
     baseDef: 30,
     baseSpd: 5,
     rarity: 5,
+    element: 'ice',
   },
 ];
 
