@@ -332,6 +332,37 @@ export interface SaveData {
   lineup: string[];
   lineupConfig: LineupConfig;
   battleHistory: BattleRecord[];
+  pityState?: PityState;
+  gachaRecords?: GachaRecord[];
+  limitedPool?: LimitedPoolConfig;
+}
+
+export type GachaPoolType = 'animal' | 'part' | 'skill' | 'limited';
+
+export interface GachaRecord {
+  id: string;
+  poolType: GachaPoolType;
+  itemType: 'animal' | 'part' | 'skill';
+  itemTemplateId: string;
+  itemName: string;
+  itemEmoji: string;
+  rarity: Rarity;
+  isNew: boolean;
+  timestamp: number;
+}
+
+export interface PityState {
+  animal: { pullsSinceR4: number; pullsSinceR5: number };
+  part: { pullsSinceR4: number; pullsSinceR5: number };
+  skill: { pullsSinceR4: number; pullsSinceR5: number };
+  limited: { pullsSinceR4: number; pullsSinceR5: number; guaranteedFeatured: boolean };
+}
+
+export interface LimitedPoolConfig {
+  featuredAnimalTemplateIds: string[];
+  featuredPartTemplateIds: string[];
+  featuredSkillTemplateIds: string[];
+  endsAt: number;
 }
 
 export interface GachaRates {
@@ -344,6 +375,15 @@ export interface GachaCost {
   animal: number;
   part: number;
   skill: number;
+  limited: number;
+}
+
+export interface GachaMultiResult {
+  item: Animal | Part | Skill;
+  itemType: 'animal' | 'part' | 'skill';
+  isNew: boolean;
+  isPity: boolean;
+  isFeatured: boolean;
 }
 
 export interface TargetSelectionStrategy {

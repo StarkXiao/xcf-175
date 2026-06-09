@@ -135,6 +135,13 @@ export const GACHA_RATES = {
     4: 4,
     5: 1,
   },
+  limited: {
+    1: 45,
+    2: 30,
+    3: 18,
+    4: 5.5,
+    5: 1.5,
+  },
 } as const;
 
 export const GACHA_COST = {
@@ -142,9 +149,36 @@ export const GACHA_COST = {
   animalTen: 900,
   part: 50,
   skill: 80,
+  limited: 10,
+  limitedTen: 90,
 } as const;
 
 export const GACHA_COSTS = GACHA_COST;
+
+export const PITY_CONFIG = {
+  hardPityR5: 90,
+  hardPityR4: 60,
+  softPityR5Start: 75,
+  softPityR5Bonus: 6,
+  limitedHardPityR5: 80,
+  limitedHardPityR4: 50,
+  limitedSoftPityR5Start: 65,
+  limitedSoftPityR5Bonus: 8,
+  featuredR5Rate: 50,
+  featuredR4Rate: 50,
+} as const;
+
+export const LIMITED_POOL: {
+  featuredAnimalTemplateIds: string[];
+  featuredPartTemplateIds: string[];
+  featuredSkillTemplateIds: string[];
+  endsAt: number;
+} = {
+  featuredAnimalTemplateIds: ['boar_urban', 'snake_alley'],
+  featuredPartTemplateIds: ['head_crown', 'body_titanium', 'weapon_plasma'],
+  featuredSkillTemplateIds: ['skill_thunder', 'skill_charge', 'skill_thunder_wave'],
+  endsAt: Date.now() + 30 * 24 * 60 * 60 * 1000,
+};
 
 export const BET_OPTIONS = [10, 50, 100, 500, 1000] as const;
 

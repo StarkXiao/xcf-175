@@ -1,7 +1,7 @@
-import type { SaveData, Part, Skill, Animal, EquippedPart, EquippedSkill, PartSlot } from '@/types';
+import type { SaveData, Part, Skill, Animal, EquippedPart, EquippedSkill, PartSlot, PityState } from '@/types';
 import { SAVE_KEY, STORAGE_THROTTLE } from '@/engine/constants';
-import { PART_TEMPLATES, getPartTemplate } from '@/data/parts';
-import { SKILL_TEMPLATES, getSkillTemplate } from '@/data/skills';
+import { PART_TEMPLATES } from '@/data/parts';
+import { SKILL_TEMPLATES } from '@/data/skills';
 
 let saveTimeout: NodeJS.Timeout | null = null;
 
@@ -173,7 +173,7 @@ const resolveSkillId = (
 };
 
 export const migrateSaveData = (data: SaveData): SaveData => {
-  if (data.version >= 3) return data;
+  if (data.version >= 4) return data;
 
   let migrated = { ...data };
 
@@ -272,8 +272,32 @@ export const migrateSaveData = (data: SaveData): SaveData => {
     initialEnemyUnits: record.initialEnemyUnits?.map(migrateBattleUnit) as typeof record.initialEnemyUnits || record.initialEnemyUnits,
   }));
 
-  return {
+  migrated = {
     ...migrated,
     battleHistory: migratedBattleHistory,
-  } as SaveData;
+  };
+
+  if (migrated.version < 4) {
+    const defaultPityState: PityState = {
+      animal: { pullsSinceR4: 0, pullsSinceR5: 0 },
+      part: { pullsSinceR4: 0, pullsSinceR5: 0 },
+      skill: { pullsSinceR4: 0, pullsSinceR5: 0 },
+      limited: { pullsSinceR4: 0, pullsSinceR5: 0, guaranteedFeatured: false },
+    };
+
+    migrated = {
+      ...migrated,
+      version: 4,
+      pityState: migrated.pityState || defaultPityState,
+      gachaRecords: migrated.gachaRecords || [],
+      limitedPool: migrated.limitedPool || {
+        featuredAnimalTemplateIds: ['boar_urban', 'snake_alley'],
+        featuredPartTemplateIds: ['head_crown', 'body_titanium', 'weapon_plasma'],
+        featuredSkillTemplateIds: ['skill_thunder', 'skill_charge', 'skill_thunder_wave'],
+        endsAt: Date.now() + 30 * 24 * 60 * 60 * 1000,
+      },
+    } as SaveData;
+  }
+
+  return migrated as SaveData;
 };

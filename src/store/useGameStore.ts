@@ -6,29 +6,31 @@ import type {
   BattleRecord,
   SaveData,
   EquippedPart,
-  EquippedSkill,
   Rarity,
   PartSlot,
   LineupConfig,
-  AnimalFormationConfig,
   FormationPosition,
   TargetStrategy,
   ActionPriority,
+  PityState,
+  GachaRecord,
+  GachaPoolType,
+  LimitedPoolConfig,
+  GachaMultiResult,
 } from '@/types';
 import { ANIMAL_TEMPLATES } from '@/data/animals';
 import { PART_TEMPLATES } from '@/data/parts';
 import { SKILL_TEMPLATES } from '@/data/skills';
 import { generateAnimalId, generateBattleId, generateId } from '@/utils/id';
-import { pickRandomWeighted, randomInt, pickRandom } from '@/utils/random';
+import { pickRandomWeighted, pickRandom } from '@/utils/random';
 import {
   loadFromLocalStorage,
   throttledSave,
   saveToLocalStorage,
-  createNewSaveData,
   clearSave,
   hasExistingSave,
 } from '@/utils/save';
-import { GACHA_RATES, GACHA_COSTS, BATTLE_CONSTANTS, NEWBIE_GIFT } from '@/engine/constants';
+import { GACHA_RATES, GACHA_COSTS, BATTLE_CONSTANTS, NEWBIE_GIFT, PITY_CONFIG, LIMITED_POOL } from '@/engine/constants';
 import { simulateFullBattle } from '@/engine/battleEngine';
 import { getAnimalTemplate } from '@/data/animals';
 import { getPartTemplate } from '@/data/parts';
@@ -52,6 +54,9 @@ interface GameState {
   lineup: string[];
   lineupConfig: LineupConfig;
   battleHistory: BattleRecord[];
+  pityState: PityState;
+  gachaRecords: GachaRecord[];
+  limitedPool: LimitedPoolConfig;
   isLoading: boolean;
   isNewPlayer: boolean;
   isInitialized: boolean;
@@ -81,10 +86,14 @@ interface GameState {
 
   addCoins: (amount: number) => void;
   spendCoins: (amount: number) => boolean;
+  addGems: (amount: number) => void;
+  spendGems: (amount: number) => boolean;
 
-  gachaAnimal: () => { animal: Animal; isNew: boolean };
-  gachaPart: () => { part: Part; isNew: boolean };
-  gachaSkill: () => { skill: Skill; isNew: boolean };
+  gachaAnimal: () => { animal: Animal; isNew: boolean; isPity: boolean };
+  gachaPart: () => { part: Part; isNew: boolean; isPity: boolean };
+  gachaSkill: () => { skill: Skill; isNew: boolean; isPity: boolean };
+  gachaLimited: () => { item: Animal | Part | Skill; itemType: 'animal' | 'part' | 'skill'; isNew: boolean; isPity: boolean; isFeatured: boolean };
+  gachaMulti: (poolType: GachaPoolType, count: number) => { results: GachaMultiResult[]; totalCost: number };
 
   startBattle: (betAmount: number) => {
     success: boolean;
@@ -97,10 +106,11 @@ interface GameState {
   getLineupAnimals: () => Animal[];
 }
 
-const rollRarity = (rates: Record<number, number>): Rarity => {
-  const rarities = Object.keys(rates).map(Number) as Rarity[];
-  const weights = rarities.map(r => rates[r]);
-  return pickRandomWeighted(rarities, weights);
+const DEFAULT_PITY_STATE: PityState = {
+  animal: { pullsSinceR4: 0, pullsSinceR5: 0 },
+  part: { pullsSinceR4: 0, pullsSinceR5: 0 },
+  skill: { pullsSinceR4: 0, pullsSinceR5: 0 },
+  limited: { pullsSinceR4: 0, pullsSinceR5: 0, guaranteedFeatured: false },
 };
 
 const createAnimalFromTemplate = (templateId: string, rarity: Rarity): Animal => {
@@ -145,6 +155,59 @@ const createInitialSkills = (): Skill[] => {
   return skills;
 };
 
+const rollRarityWithPity = (
+  rates: Record<number, number>,
+  pullsSinceR4: number,
+  pullsSinceR5: number,
+  isLimited: boolean = false,
+): Rarity => {
+  const hardPityR5 = isLimited ? PITY_CONFIG.limitedHardPityR5 : PITY_CONFIG.hardPityR5;
+  const hardPityR4 = isLimited ? PITY_CONFIG.limitedHardPityR4 : PITY_CONFIG.hardPityR4;
+  const softPityStart = isLimited ? PITY_CONFIG.limitedSoftPityR5Start : PITY_CONFIG.softPityR5Start;
+  const softPityBonus = isLimited ? PITY_CONFIG.limitedSoftPityR5Bonus : PITY_CONFIG.softPityR5Bonus;
+
+  if (pullsSinceR5 >= hardPityR5 - 1) {
+    return 5;
+  }
+
+  if (pullsSinceR4 >= hardPityR4 - 1) {
+    return 4;
+  }
+
+  const rarities = Object.keys(rates).map(Number) as Rarity[];
+  const adjustedRates = { ...rates };
+
+  if (pullsSinceR5 >= softPityStart - 1) {
+    const overflow = pullsSinceR5 - (softPityStart - 1);
+    const bonus = overflow * softPityBonus;
+    adjustedRates[5] = (adjustedRates[5] || 0) + bonus;
+    adjustedRates[1] = Math.max(0, (adjustedRates[1] || 0) - bonus);
+  }
+
+  const weights = rarities.map(r => adjustedRates[r]);
+  return pickRandomWeighted(rarities, weights);
+};
+
+const recordGacha = (
+  poolType: GachaPoolType,
+  itemType: 'animal' | 'part' | 'skill',
+  templateId: string,
+  itemName: string,
+  itemEmoji: string,
+  rarity: Rarity,
+  isNew: boolean,
+): GachaRecord => ({
+  id: generateId('gacha'),
+  poolType,
+  itemType,
+  itemTemplateId: templateId,
+  itemName,
+  itemEmoji,
+  rarity,
+  isNew,
+  timestamp: Date.now(),
+});
+
 export const useGameStore = create<GameState>((set, get) => ({
   player: {
     id: '',
@@ -163,6 +226,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   lineup: [],
   lineupConfig: { animals: [], actionPriority: 'speedFirst' },
   battleHistory: [],
+  pityState: { ...DEFAULT_PITY_STATE },
+  gachaRecords: [],
+  limitedPool: { ...LIMITED_POOL },
   isLoading: true,
   isNewPlayer: false,
   isInitialized: false,
@@ -209,6 +275,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         actionPriority: 'speedFirst' as ActionPriority,
       },
       battleHistory: [],
+      pityState: { ...DEFAULT_PITY_STATE },
+      gachaRecords: [],
+      limitedPool: { ...LIMITED_POOL },
       isLoading: false,
       isNewPlayer: true,
       isInitialized: true,
@@ -248,6 +317,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       return changed ? { ...animal, parts, skills } : animal;
     });
 
+    const pityState: PityState = data.pityState || { ...DEFAULT_PITY_STATE };
+    if (!pityState.limited) {
+      pityState.limited = { pullsSinceR4: 0, pullsSinceR5: 0, guaranteedFeatured: false };
+    }
+
     set({
       player: data.player,
       ownedAnimals: repairedAnimals,
@@ -263,6 +337,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         actionPriority: 'speedFirst' as ActionPriority,
       },
       battleHistory: data.battleHistory,
+      pityState,
+      gachaRecords: data.gachaRecords || [],
+      limitedPool: data.limitedPool || { ...LIMITED_POOL },
       isLoading: false,
       isNewPlayer: false,
       isInitialized: true,
@@ -275,7 +352,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   saveGame: (force: boolean = false) => {
     const state = get();
     const saveData: SaveData = {
-      version: 3,
+      version: 4,
       timestamp: Date.now(),
       player: state.player,
       ownedAnimals: state.ownedAnimals,
@@ -284,6 +361,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       lineup: state.lineup,
       lineupConfig: state.lineupConfig,
       battleHistory: state.battleHistory,
+      pityState: state.pityState,
+      gachaRecords: state.gachaRecords.slice(-200),
+      limitedPool: state.limitedPool,
     };
 
     if (force) {
@@ -313,6 +393,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       lineup: [],
       lineupConfig: { animals: [], actionPriority: 'speedFirst' },
       battleHistory: [],
+      pityState: { ...DEFAULT_PITY_STATE },
+      gachaRecords: [],
+      limitedPool: { ...LIMITED_POOL },
       isLoading: true,
       isNewPlayer: false,
       isInitialized: false,
@@ -433,7 +516,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!animal) return false;
 
     const existingIndex = animal.parts.findIndex(p => p.slot === slot);
-    let newParts = [...animal.parts];
+    const newParts = [...animal.parts];
     let removedPart: EquippedPart | null = null;
 
     if (existingIndex >= 0) {
@@ -556,24 +639,54 @@ export const useGameStore = create<GameState>((set, get) => ({
     return true;
   },
 
+  addGems: (amount: number) => {
+    set(state => ({
+      player: { ...state.player, gems: state.player.gems + amount },
+    }));
+    get().saveGame();
+  },
+
+  spendGems: (amount: number): boolean => {
+    const state = get();
+    if (state.player.gems < amount) return false;
+
+    set(state => ({
+      player: { ...state.player, gems: state.player.gems - amount },
+    }));
+    get().saveGame();
+    return true;
+  },
+
   gachaAnimal: () => {
     const state = get();
     if (state.player.coins < GACHA_COSTS.animal) {
       throw new Error('Not enough coins');
     }
 
-    const rarity = rollRarity(GACHA_RATES.animal);
+    const pity = state.pityState.animal;
+    const rarity = rollRarityWithPity(GACHA_RATES.animal, pity.pullsSinceR4, pity.pullsSinceR5);
+    const isPity = rarity >= 4 && (pity.pullsSinceR4 >= PITY_CONFIG.hardPityR4 - 1 || pity.pullsSinceR5 >= PITY_CONFIG.hardPityR5 - 1);
+
     const pool = ANIMAL_TEMPLATES.filter(t => t.rarity <= rarity);
     const template = pickRandom(pool);
     const animal = createAnimalFromTemplate(template.id, rarity);
     const isNew = !state.ownedAnimals.some(a => a.templateId === template.id);
 
+    const gachaRecord = recordGacha('animal', 'animal', template.id, template.name, template.emoji, rarity, isNew);
+
+    const newPity = {
+      pullsSinceR4: rarity >= 4 ? 0 : pity.pullsSinceR4 + 1,
+      pullsSinceR5: rarity >= 5 ? 0 : pity.pullsSinceR5 + 1,
+    };
+
     set(state => ({
       player: { ...state.player, coins: state.player.coins - GACHA_COSTS.animal },
       ownedAnimals: [...state.ownedAnimals, animal],
+      pityState: { ...state.pityState, animal: newPity },
+      gachaRecords: [...state.gachaRecords, gachaRecord],
     }));
     get().saveGame();
-    return { animal, isNew };
+    return { animal, isNew, isPity };
   },
 
   gachaPart: () => {
@@ -582,33 +695,36 @@ export const useGameStore = create<GameState>((set, get) => ({
       throw new Error('Not enough coins');
     }
 
-    const rarity = rollRarity(GACHA_RATES.part);
+    const pity = state.pityState.part;
+    const rarity = rollRarityWithPity(GACHA_RATES.part, pity.pullsSinceR4, pity.pullsSinceR5);
+    const isPity = rarity >= 4 && (pity.pullsSinceR4 >= PITY_CONFIG.hardPityR4 - 1 || pity.pullsSinceR5 >= PITY_CONFIG.hardPityR5 - 1);
+
     let pool = PART_TEMPLATES.filter(p => p.rarity === rarity);
     if (pool.length === 0) {
       pool = PART_TEMPLATES.filter(p => p.rarity <= rarity);
       if (pool.length === 0) {
         pool = PART_TEMPLATES;
       }
-      const template = pickRandom(pool);
-      const part: Part = { ...template, id: generateId('part'), templateId: template.id };
-      set(state => ({
-        player: { ...state.player, coins: state.player.coins - GACHA_COSTS.part },
-        ownedParts: [...state.ownedParts, part],
-      }));
-      get().saveGame();
-      return { part, isNew: true };
     }
-
     const template = pickRandom(pool);
     const part: Part = { ...template, id: generateId('part'), templateId: template.id };
-    const isNew = !state.ownedParts.some(p => p.id === template.id);
+    const isNew = !state.ownedParts.some(p => p.templateId === template.id);
+
+    const gachaRecord = recordGacha('part', 'part', template.id, template.name, template.emoji, rarity, isNew);
+
+    const newPity = {
+      pullsSinceR4: rarity >= 4 ? 0 : pity.pullsSinceR4 + 1,
+      pullsSinceR5: rarity >= 5 ? 0 : pity.pullsSinceR5 + 1,
+    };
 
     set(state => ({
       player: { ...state.player, coins: state.player.coins - GACHA_COSTS.part },
       ownedParts: [...state.ownedParts, part],
+      pityState: { ...state.pityState, part: newPity },
+      gachaRecords: [...state.gachaRecords, gachaRecord],
     }));
     get().saveGame();
-    return { part, isNew };
+    return { part, isNew, isPity };
   },
 
   gachaSkill: () => {
@@ -617,7 +733,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       throw new Error('Not enough coins');
     }
 
-    const rarity = rollRarity(GACHA_RATES.skill);
+    const pity = state.pityState.skill;
+    const rarity = rollRarityWithPity(GACHA_RATES.skill, pity.pullsSinceR4, pity.pullsSinceR5);
+    const isPity = rarity >= 4 && (pity.pullsSinceR4 >= PITY_CONFIG.hardPityR4 - 1 || pity.pullsSinceR5 >= PITY_CONFIG.hardPityR5 - 1);
+
     const pool = SKILL_TEMPLATES.filter(s => {
       if (s.type === 'special') return rarity >= 3;
       if (s.type === 'buff' || s.type === 'debuff') return rarity >= 2;
@@ -626,24 +745,406 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (pool.length === 0) {
       const template = pickRandom(SKILL_TEMPLATES);
       const skill: Skill = { ...template, id: generateId('skill'), templateId: template.id };
+      const gachaRecord = recordGacha('skill', 'skill', template.id, template.name, template.emoji, rarity, true);
+
+      const newPity = {
+        pullsSinceR4: rarity >= 4 ? 0 : pity.pullsSinceR4 + 1,
+        pullsSinceR5: rarity >= 5 ? 0 : pity.pullsSinceR5 + 1,
+      };
+
       set(state => ({
         player: { ...state.player, coins: state.player.coins - GACHA_COSTS.skill },
         ownedSkills: [...state.ownedSkills, skill],
+        pityState: { ...state.pityState, skill: newPity },
+        gachaRecords: [...state.gachaRecords, gachaRecord],
       }));
       get().saveGame();
-      return { skill, isNew: true };
+      return { skill, isNew: true, isPity };
     }
 
     const template = pickRandom(pool);
     const skill: Skill = { ...template, id: generateId('skill'), templateId: template.id };
-    const isNew = !state.ownedSkills.some(s => s.id === template.id);
+    const isNew = !state.ownedSkills.some(s => s.templateId === template.id);
+
+    const gachaRecord = recordGacha('skill', 'skill', template.id, template.name, template.emoji, rarity, isNew);
+
+    const newPity = {
+      pullsSinceR4: rarity >= 4 ? 0 : pity.pullsSinceR4 + 1,
+      pullsSinceR5: rarity >= 5 ? 0 : pity.pullsSinceR5 + 1,
+    };
 
     set(state => ({
       player: { ...state.player, coins: state.player.coins - GACHA_COSTS.skill },
       ownedSkills: [...state.ownedSkills, skill],
+      pityState: { ...state.pityState, skill: newPity },
+      gachaRecords: [...state.gachaRecords, gachaRecord],
     }));
     get().saveGame();
-    return { skill, isNew };
+    return { skill, isNew, isPity };
+  },
+
+  gachaLimited: () => {
+    const state = get();
+    if (state.player.gems < GACHA_COSTS.limited) {
+      throw new Error('Not enough gems');
+    }
+
+    const pity = state.pityState.limited;
+    const rarity = rollRarityWithPity(GACHA_RATES.limited, pity.pullsSinceR4, pity.pullsSinceR5, true);
+    const isPity = rarity >= 4 && (pity.pullsSinceR4 >= PITY_CONFIG.limitedHardPityR4 - 1 || pity.pullsSinceR5 >= PITY_CONFIG.limitedHardPityR5 - 1);
+
+    const lp = state.limitedPool;
+    const isFeaturedR5 = rarity === 5 && (pity.guaranteedFeatured || Math.random() * 100 < PITY_CONFIG.featuredR5Rate);
+    const isFeaturedR4 = rarity === 4 && Math.random() * 100 < PITY_CONFIG.featuredR4Rate;
+    const isFeatured = isFeaturedR5 || isFeaturedR4;
+
+    let itemType: 'animal' | 'part' | 'skill';
+    let item: Animal | Part | Skill;
+    let templateId: string;
+    let itemName: string;
+    let itemEmoji: string;
+
+    if (isFeaturedR5 || isFeaturedR4) {
+      const allFeatured = [
+        ...lp.featuredAnimalTemplateIds.map(id => ({ type: 'animal' as const, id })),
+        ...lp.featuredPartTemplateIds.map(id => ({ type: 'part' as const, id })),
+        ...lp.featuredSkillTemplateIds.map(id => ({ type: 'skill' as const, id })),
+      ].filter(fi => {
+        if (fi.type === 'animal') {
+          const t = getAnimalTemplate(fi.id);
+          return t && t.rarity <= rarity;
+        }
+        if (fi.type === 'part') {
+          const t = getPartTemplate(fi.id);
+          return t && t.rarity <= rarity;
+        }
+        const t = getSkillTemplate(fi.id);
+        return t && t.rarity <= rarity;
+      });
+
+      if (allFeatured.length > 0) {
+        const chosen = pickRandom(allFeatured);
+        itemType = chosen.type;
+        templateId = chosen.id;
+
+        if (itemType === 'animal') {
+          const template = getAnimalTemplate(templateId)!;
+          item = createAnimalFromTemplate(templateId, rarity);
+          itemName = template.name;
+          itemEmoji = template.emoji;
+        } else if (itemType === 'part') {
+          const template = getPartTemplate(templateId)!;
+          item = { ...template, id: generateId('part'), templateId: template.id, rarity };
+          itemName = template.name;
+          itemEmoji = template.emoji;
+        } else {
+          const template = getSkillTemplate(templateId)!;
+          item = { ...template, id: generateId('skill'), templateId: template.id, rarity };
+          itemName = template.name;
+          itemEmoji = template.emoji;
+        }
+      } else {
+        const roll = Math.random();
+        if (roll < 0.34) {
+          itemType = 'animal';
+          const pool = ANIMAL_TEMPLATES.filter(t => t.rarity <= rarity);
+          const template = pickRandom(pool);
+          templateId = template.id;
+          item = createAnimalFromTemplate(templateId, rarity);
+          itemName = template.name;
+          itemEmoji = template.emoji;
+        } else if (roll < 0.67) {
+          itemType = 'part';
+          const pool = PART_TEMPLATES.filter(p => p.rarity <= rarity);
+          const template = pickRandom(pool);
+          templateId = template.id;
+          item = { ...template, id: generateId('part'), templateId: template.id, rarity };
+          itemName = template.name;
+          itemEmoji = template.emoji;
+        } else {
+          itemType = 'skill';
+          const pool = SKILL_TEMPLATES.filter(s => s.rarity <= rarity);
+          const template = pickRandom(pool);
+          templateId = template.id;
+          item = { ...template, id: generateId('skill'), templateId: template.id, rarity };
+          itemName = template.name;
+          itemEmoji = template.emoji;
+        }
+      }
+    } else {
+      const roll = Math.random();
+      if (roll < 0.34) {
+        itemType = 'animal';
+        const pool = ANIMAL_TEMPLATES.filter(t => t.rarity <= rarity);
+        const template = pickRandom(pool);
+        templateId = template.id;
+        item = createAnimalFromTemplate(templateId, rarity);
+        itemName = template.name;
+        itemEmoji = template.emoji;
+      } else if (roll < 0.67) {
+        itemType = 'part';
+        const pool = PART_TEMPLATES.filter(p => p.rarity <= rarity);
+        const template = pickRandom(pool);
+        templateId = template.id;
+        item = { ...template, id: generateId('part'), templateId: template.id, rarity };
+        itemName = template.name;
+        itemEmoji = template.emoji;
+      } else {
+        itemType = 'skill';
+        const pool = SKILL_TEMPLATES.filter(s => s.rarity <= rarity);
+        const template = pickRandom(pool);
+        templateId = template.id;
+        item = { ...template, id: generateId('skill'), templateId: template.id, rarity };
+        itemName = template.name;
+        itemEmoji = template.emoji;
+      }
+    }
+
+    const isNew = itemType === 'animal'
+      ? !state.ownedAnimals.some(a => a.templateId === templateId)
+      : itemType === 'part'
+        ? !state.ownedParts.some(p => p.templateId === templateId)
+        : !state.ownedSkills.some(s => s.templateId === templateId);
+
+    const gachaRecord = recordGacha('limited', itemType, templateId, itemName, itemEmoji, rarity, isNew);
+
+    let newGuaranteedFeatured = pity.guaranteedFeatured;
+    if (rarity === 5) {
+      newGuaranteedFeatured = !isFeaturedR5;
+    }
+
+    const newLimitedPity = {
+      pullsSinceR4: rarity >= 4 ? 0 : pity.pullsSinceR4 + 1,
+      pullsSinceR5: rarity >= 5 ? 0 : pity.pullsSinceR5 + 1,
+      guaranteedFeatured: newGuaranteedFeatured,
+    };
+
+    const stateUpdates: Record<string, unknown> = {
+      player: { ...state.player, gems: state.player.gems - GACHA_COSTS.limited },
+      pityState: { ...state.pityState, limited: newLimitedPity },
+      gachaRecords: [...state.gachaRecords, gachaRecord],
+    };
+
+    if (itemType === 'animal') {
+      stateUpdates.ownedAnimals = [...state.ownedAnimals, item as Animal];
+    } else if (itemType === 'part') {
+      stateUpdates.ownedParts = [...state.ownedParts, item as Part];
+    } else {
+      stateUpdates.ownedSkills = [...state.ownedSkills, item as Skill];
+    }
+
+    set(stateUpdates as Partial<GameState>);
+    get().saveGame();
+    return { item, itemType, isNew, isPity, isFeatured };
+  },
+
+  gachaMulti: (poolType: GachaPoolType, count: number) => {
+    const state = get();
+    const costPer = poolType === 'limited' ? GACHA_COSTS.limited : GACHA_COSTS[poolType];
+    const currency = poolType === 'limited' ? 'gems' as const : 'coins' as const;
+    const totalCost = costPer * count;
+
+    if (state.player[currency] < totalCost) {
+      return { results: [] as GachaMultiResult[], totalCost: 0 };
+    }
+
+    set(s => ({
+      player: { ...s.player, [currency]: s.player[currency] - totalCost },
+    }));
+
+    const results: GachaMultiResult[] = [];
+    const newAnimals: Animal[] = [];
+    const newParts: Part[] = [];
+    const newSkills: Skill[] = [];
+    const newRecords: GachaRecord[] = [];
+    let pityState = { ...get().pityState };
+
+    for (let i = 0; i < count; i++) {
+      const currentState = get();
+      let result: GachaMultiResult;
+
+      switch (poolType) {
+        case 'animal': {
+          const pity = pityState.animal;
+          const rarity = rollRarityWithPity(GACHA_RATES.animal, pity.pullsSinceR4, pity.pullsSinceR5);
+          const isPity = rarity >= 4 && (pity.pullsSinceR4 >= PITY_CONFIG.hardPityR4 - 1 || pity.pullsSinceR5 >= PITY_CONFIG.hardPityR5 - 1);
+          const pool = ANIMAL_TEMPLATES.filter(t => t.rarity <= rarity);
+          const template = pickRandom(pool);
+          const animal = createAnimalFromTemplate(template.id, rarity);
+          const isNew = !currentState.ownedAnimals.some(a => a.templateId === template.id) && !newAnimals.some(a => a.templateId === template.id);
+          newAnimals.push(animal);
+          newRecords.push(recordGacha('animal', 'animal', template.id, template.name, template.emoji, rarity, isNew));
+          pityState = {
+            ...pityState,
+            animal: {
+              pullsSinceR4: rarity >= 4 ? 0 : pity.pullsSinceR4 + 1,
+              pullsSinceR5: rarity >= 5 ? 0 : pity.pullsSinceR5 + 1,
+            },
+          };
+          result = { item: animal, itemType: 'animal', isNew, isPity, isFeatured: false };
+          break;
+        }
+        case 'part': {
+          const pity = pityState.part;
+          const rarity = rollRarityWithPity(GACHA_RATES.part, pity.pullsSinceR4, pity.pullsSinceR5);
+          const isPity = rarity >= 4 && (pity.pullsSinceR4 >= PITY_CONFIG.hardPityR4 - 1 || pity.pullsSinceR5 >= PITY_CONFIG.hardPityR5 - 1);
+          let pool = PART_TEMPLATES.filter(p => p.rarity === rarity);
+          if (pool.length === 0) {
+            pool = PART_TEMPLATES.filter(p => p.rarity <= rarity);
+            if (pool.length === 0) pool = PART_TEMPLATES;
+          }
+          const template = pickRandom(pool);
+          const part: Part = { ...template, id: generateId('part'), templateId: template.id };
+          const isNew = !currentState.ownedParts.some(p => p.templateId === template.id) && !newParts.some(p => p.templateId === template.id);
+          newParts.push(part);
+          newRecords.push(recordGacha('part', 'part', template.id, template.name, template.emoji, rarity, isNew));
+          pityState = {
+            ...pityState,
+            part: {
+              pullsSinceR4: rarity >= 4 ? 0 : pity.pullsSinceR4 + 1,
+              pullsSinceR5: rarity >= 5 ? 0 : pity.pullsSinceR5 + 1,
+            },
+          };
+          result = { item: part, itemType: 'part', isNew, isPity, isFeatured: false };
+          break;
+        }
+        case 'skill': {
+          const pity = pityState.skill;
+          const rarity = rollRarityWithPity(GACHA_RATES.skill, pity.pullsSinceR4, pity.pullsSinceR5);
+          const isPity = rarity >= 4 && (pity.pullsSinceR4 >= PITY_CONFIG.hardPityR4 - 1 || pity.pullsSinceR5 >= PITY_CONFIG.hardPityR5 - 1);
+          let pool = SKILL_TEMPLATES.filter(s => {
+            if (s.type === 'special') return rarity >= 3;
+            if (s.type === 'buff' || s.type === 'debuff') return rarity >= 2;
+            return true;
+          });
+          if (pool.length === 0) pool = SKILL_TEMPLATES;
+          const template = pickRandom(pool);
+          const skill: Skill = { ...template, id: generateId('skill'), templateId: template.id };
+          const isNew = !currentState.ownedSkills.some(s => s.templateId === template.id) && !newSkills.some(s => s.templateId === template.id);
+          newSkills.push(skill);
+          newRecords.push(recordGacha('skill', 'skill', template.id, template.name, template.emoji, rarity, isNew));
+          pityState = {
+            ...pityState,
+            skill: {
+              pullsSinceR4: rarity >= 4 ? 0 : pity.pullsSinceR4 + 1,
+              pullsSinceR5: rarity >= 5 ? 0 : pity.pullsSinceR5 + 1,
+            },
+          };
+          result = { item: skill, itemType: 'skill', isNew, isPity, isFeatured: false };
+          break;
+        }
+        case 'limited': {
+          const pity = pityState.limited;
+          const rarity = rollRarityWithPity(GACHA_RATES.limited, pity.pullsSinceR4, pity.pullsSinceR5, true);
+          const isPity = rarity >= 4 && (pity.pullsSinceR4 >= PITY_CONFIG.limitedHardPityR4 - 1 || pity.pullsSinceR5 >= PITY_CONFIG.limitedHardPityR5 - 1);
+          const lp = currentState.limitedPool;
+          const isFeaturedR5 = rarity === 5 && (pity.guaranteedFeatured || Math.random() * 100 < PITY_CONFIG.featuredR5Rate);
+          const isFeaturedR4 = rarity === 4 && Math.random() * 100 < PITY_CONFIG.featuredR4Rate;
+          const isFeatured = isFeaturedR5 || isFeaturedR4;
+
+          let itemType: 'animal' | 'part' | 'skill';
+          let item: Animal | Part | Skill;
+          let templateId: string;
+          let itemName: string;
+          let itemEmoji: string;
+
+          const rollNonFeatured = (): { itemType: 'animal' | 'part' | 'skill'; item: Animal | Part | Skill; templateId: string; itemName: string; itemEmoji: string } => {
+            const roll = Math.random();
+            if (roll < 0.34) {
+              const tPool = ANIMAL_TEMPLATES.filter(t => t.rarity <= rarity);
+              const t = pickRandom(tPool);
+              return { itemType: 'animal', item: createAnimalFromTemplate(t.id, rarity), templateId: t.id, itemName: t.name, itemEmoji: t.emoji };
+            } else if (roll < 0.67) {
+              const tPool = PART_TEMPLATES.filter(p => p.rarity <= rarity);
+              const t = pickRandom(tPool);
+              return { itemType: 'part', item: { ...t, id: generateId('part'), templateId: t.id, rarity }, templateId: t.id, itemName: t.name, itemEmoji: t.emoji };
+            } else {
+              const tPool = SKILL_TEMPLATES.filter(s => s.rarity <= rarity);
+              const t = pickRandom(tPool);
+              return { itemType: 'skill', item: { ...t, id: generateId('skill'), templateId: t.id, rarity }, templateId: t.id, itemName: t.name, itemEmoji: t.emoji };
+            }
+          };
+
+          if (isFeaturedR5 || isFeaturedR4) {
+            const allFeatured = [
+              ...lp.featuredAnimalTemplateIds.map(id => ({ type: 'animal' as const, id })),
+              ...lp.featuredPartTemplateIds.map(id => ({ type: 'part' as const, id })),
+              ...lp.featuredSkillTemplateIds.map(id => ({ type: 'skill' as const, id })),
+            ].filter(fi => {
+              if (fi.type === 'animal') { const t = getAnimalTemplate(fi.id); return t && t.rarity <= rarity; }
+              if (fi.type === 'part') { const t = getPartTemplate(fi.id); return t && t.rarity <= rarity; }
+              const t = getSkillTemplate(fi.id); return t && t.rarity <= rarity;
+            });
+            if (allFeatured.length > 0) {
+              const chosen = pickRandom(allFeatured);
+              itemType = chosen.type;
+              templateId = chosen.id;
+              if (itemType === 'animal') {
+                const template = getAnimalTemplate(templateId)!;
+                item = createAnimalFromTemplate(templateId, rarity);
+                itemName = template.name; itemEmoji = template.emoji;
+              } else if (itemType === 'part') {
+                const template = getPartTemplate(templateId)!;
+                item = { ...template, id: generateId('part'), templateId: template.id, rarity };
+                itemName = template.name; itemEmoji = template.emoji;
+              } else {
+                const template = getSkillTemplate(templateId)!;
+                item = { ...template, id: generateId('skill'), templateId: template.id, rarity };
+                itemName = template.name; itemEmoji = template.emoji;
+              }
+            } else {
+              const r = rollNonFeatured();
+              itemType = r.itemType; item = r.item; templateId = r.templateId; itemName = r.itemName; itemEmoji = r.itemEmoji;
+            }
+          } else {
+            const r = rollNonFeatured();
+            itemType = r.itemType; item = r.item; templateId = r.templateId; itemName = r.itemName; itemEmoji = r.itemEmoji;
+          }
+
+          const isNew = itemType === 'animal'
+            ? !currentState.ownedAnimals.some(a => a.templateId === templateId) && !newAnimals.some(a => a.templateId === templateId)
+            : itemType === 'part'
+              ? !currentState.ownedParts.some(p => p.templateId === templateId) && !newParts.some(p => p.templateId === templateId)
+              : !currentState.ownedSkills.some(s => s.templateId === templateId) && !newSkills.some(s => s.templateId === templateId);
+
+          if (itemType === 'animal') newAnimals.push(item as Animal);
+          else if (itemType === 'part') newParts.push(item as Part);
+          else newSkills.push(item as Skill);
+
+          newRecords.push(recordGacha('limited', itemType, templateId, itemName, itemEmoji, rarity, isNew));
+
+          let newGuaranteedFeatured = pity.guaranteedFeatured;
+          if (rarity === 5) {
+            newGuaranteedFeatured = !isFeaturedR5;
+          }
+          pityState = {
+            ...pityState,
+            limited: {
+              pullsSinceR4: rarity >= 4 ? 0 : pity.pullsSinceR4 + 1,
+              pullsSinceR5: rarity >= 5 ? 0 : pity.pullsSinceR5 + 1,
+              guaranteedFeatured: newGuaranteedFeatured,
+            },
+          };
+          result = { item, itemType, isNew, isPity, isFeatured };
+          break;
+        }
+        default:
+          continue;
+      }
+
+      results.push(result);
+    }
+
+    set(s => ({
+      ownedAnimals: [...s.ownedAnimals, ...newAnimals],
+      ownedParts: [...s.ownedParts, ...newParts],
+      ownedSkills: [...s.ownedSkills, ...newSkills],
+      pityState,
+      gachaRecords: [...s.gachaRecords, ...newRecords],
+    }));
+
+    get().saveGame(true);
+    return { results, totalCost };
   },
 
   startBattle: (betAmount: number) => {
