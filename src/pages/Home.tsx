@@ -15,7 +15,7 @@ export default function Home() {
   const navigate = useNavigate();
   const { lineup, ownedAnimals, startBattle, battleHistory, codex, player, gachaRecords } = useGameStore();
   const canBattle = lineup.length > 0 && lineup.length <= BATTLE_CONSTANTS.MAX_TEAM_SIZE;
-  const lastBattle = battleHistory[battleHistory.length - 1];
+  const lastBattle = battleHistory[0];
 
   const quickBattle = () => {
     if (!canBattle) return;
@@ -56,10 +56,38 @@ export default function Home() {
     });
   }, [sortedBattles]);
 
-  const lineupAnimals = useMemo(() =>
-    lineup.map(id => ownedAnimals.find(a => a.id === id)).filter(Boolean),
-    [lineup, ownedAnimals]
-  );
+  const { frequentLineup, frequentLineupCount } = useMemo(() => {
+    if (battleHistory.length === 0) {
+      return {
+        frequentLineup: lineup.map(id => ownedAnimals.find(a => a.id === id)).filter(Boolean),
+        frequentLineupCount: 0,
+      };
+    }
+    const lineupCount = new Map<string, { ids: string[]; count: number }>();
+    battleHistory.forEach(b => {
+      const key = [...b.playerLineup].sort().join(',');
+      const existing = lineupCount.get(key);
+      if (existing) {
+        existing.count++;
+      } else {
+        lineupCount.set(key, { ids: [...b.playerLineup], count: 1 });
+      }
+    });
+    let best: { ids: string[]; count: number } | null = null;
+    lineupCount.forEach(entry => {
+      if (!best || entry.count > best.count) best = entry;
+    });
+    if (!best || best.ids.length === 0) {
+      return {
+        frequentLineup: lineup.map(id => ownedAnimals.find(a => a.id === id)).filter(Boolean),
+        frequentLineupCount: 0,
+      };
+    }
+    return {
+      frequentLineup: best.ids.map(id => ownedAnimals.find(a => a.id === id)).filter(Boolean),
+      frequentLineupCount: best.count,
+    };
+  }, [battleHistory, lineup, ownedAnimals]);
 
   const growthRecords = useMemo(() => {
     const records: { id: string; type: 'battle' | 'gacha'; icon: string; text: string; detail: string; time: number; color: string }[] = [];
@@ -248,14 +276,19 @@ export default function Home() {
               <div className="flex items-center gap-2">
                 <Users className="w-5 h-5 text-cyber-pink" />
                 <h3 className="font-cyber font-bold text-cyber-pink">常用阵容</h3>
+                {frequentLineupCount > 0 && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyber-pink/15 text-cyber-pink border border-cyber-pink/30">
+                    出场{frequentLineupCount}次
+                  </span>
+                )}
               </div>
               <NeonButton size="sm" variant="ghost" onClick={() => navigate('/lineup')}>
                 <ChevronRight className="w-4 h-4" />
               </NeonButton>
             </div>
-            {lineupAnimals.length > 0 ? (
+            {frequentLineup.length > 0 ? (
               <div className="space-y-2">
-                {lineupAnimals.map((animal, i) => {
+                {frequentLineup.map((animal, i) => {
                   if (!animal) return null;
                   const template = getAnimalTemplate(animal.templateId);
                   if (!template) return null;
