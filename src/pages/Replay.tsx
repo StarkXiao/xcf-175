@@ -553,7 +553,7 @@ export default function Replay() {
               </NeonButton>
               <NeonButton
                 size="sm"
-                variant={showSummary ? 'default' : 'ghost'}
+                variant={showSummary ? 'yellow' : 'ghost'}
                 onClick={() => setShowSummary(!showSummary)}
               >
                 <Swords className="w-3 h-3 mr-1" />
