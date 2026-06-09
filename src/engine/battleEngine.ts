@@ -250,6 +250,7 @@ export const processStatusEffects = (
 
     unit.statusEffects.forEach(se => {
       const config = STATUS_EFFECT_CONFIG[se.type];
+      const afterTurns = se.remainingTurns - 1;
 
       if (se.damage > 0) {
         unit.currentHp = Math.max(0, unit.currentHp - se.damage);
@@ -261,7 +262,15 @@ export const processStatusEffects = (
           targetName: unit.name,
           value: se.damage,
           statusType: se.type,
-          statusRemainingTurns: se.remainingTurns - 1,
+          statusRemainingTurns: afterTurns,
+          statusEffectData: {
+            type: se.type,
+            remainingTurns: afterTurns,
+            damage: se.damage,
+            sourceId: se.sourceId,
+            skipTurnChance: config.skipTurnChance,
+            statModifier: config.statModifier ? { ...config.statModifier } : undefined,
+          },
           message: `${config.emoji} ${unit.name} 受到${config.name}伤害 ${se.damage}！`,
         });
 
@@ -275,6 +284,28 @@ export const processStatusEffects = (
             message: `💀 ${unit.name} 被击败了！`,
           });
         }
+      } else {
+        logs.push({
+          id: generateId('log'),
+          timestamp: Date.now(),
+          type: 'statusTick',
+          targetId: unit.id,
+          targetName: unit.name,
+          value: 0,
+          statusType: se.type,
+          statusRemainingTurns: afterTurns,
+          statusEffectData: {
+            type: se.type,
+            remainingTurns: afterTurns,
+            damage: se.damage,
+            sourceId: se.sourceId,
+            skipTurnChance: config.skipTurnChance,
+            statModifier: config.statModifier ? { ...config.statModifier } : undefined,
+          },
+          message: afterTurns > 0
+            ? `${config.emoji} ${unit.name} 的${config.name}效果持续中（剩余${afterTurns}回合）`
+            : `${config.emoji} ${unit.name} 的${config.name}效果已消退`,
+        });
       }
     });
 
@@ -743,6 +774,7 @@ export const simulateFullBattle = (
           targetId: unit.id,
           targetName: unit.name,
           statusType: skipStatus?.type,
+          statusRemainingTurns: skipStatus?.remainingTurns,
           isSkipTurn: true,
           statusEffectData: skipStatus ? {
             type: skipStatus.type,
