@@ -12,15 +12,15 @@ import type {
   FormationPosition,
   TargetStrategy,
   ActionPriority,
+  Material,
+  CodexEntry,
   PityState,
   GachaRecord,
-  GachaPoolType,
   LimitedPoolConfig,
+  GachaPoolType,
   GachaMultiResult,
-  Material,
   StarLevel,
   BreakthroughTier,
-  CodexEntry,
 } from '@/types';
 import { ANIMAL_TEMPLATES } from '@/data/animals';
 import { PART_TEMPLATES } from '@/data/parts';

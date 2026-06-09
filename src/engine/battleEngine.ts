@@ -42,6 +42,7 @@ interface PassiveContext {
   damage?: number;
   isCrit?: boolean;
   statusApplied?: { type: StatusEffectType; chance: number; duration: number; damage?: number };
+  buffPhase?: boolean;
 }
 
 interface TargetResult {
@@ -476,9 +477,16 @@ export const processPassives = (
 
   const allUnits = [...playerUnits, ...enemyUnits];
   const allies = allUnits.filter(u => u.side === unit.side && u.isAlive);
+  const isBuffPhase = context?.buffPhase === true;
+  const isReactPhase = context?.buffPhase === false;
 
   for (const passive of unit.passives) {
     if (passive.trigger !== trigger) continue;
+
+    if (trigger === 'onAttack') {
+      if (isBuffPhase && (passive.healPercent || passive.statusEffectApply || passive.extraTurnChance)) continue;
+      if (isReactPhase && (passive.statBonus || passive.damageBonus || passive.critBonus)) continue;
+    }
 
     if (passive.hpThreshold) {
       const hpPercent = (unit.currentHp / unit.maxHp) * 100;
@@ -502,10 +510,29 @@ export const processPassives = (
           remainingTurns: 2,
         });
       }
+      if (trigger !== 'onAttack') {
+        logs.push({
+          timestamp: Date.now(),
+          type: 'passive',
+          sourceId: unit.id,
+          sourceName: unit.name,
+          targetId: unit.id,
+          targetName: unit.name,
+          passiveId: passive.id,
+          passiveName: passive.name,
+          message: `${passive.emoji} ${unit.name} 的被动【${passive.name}】触发！${passive.statBonus.stat.toUpperCase()} +${passive.statBonus.value}%！`,
+        });
+      }
     }
 
     if (passive.healPercent) {
-      const healAmount = Math.floor(unit.maxHp * (passive.healPercent / 100));
+      let healAmount: number;
+      if (trigger === 'onAttack' && isReactPhase && context?.damage) {
+        healAmount = Math.floor(context.damage * (passive.healPercent / 100));
+      } else {
+        healAmount = Math.floor(unit.maxHp * (passive.healPercent / 100));
+      }
+      healAmount = Math.max(1, healAmount);
       unit.currentHp = Math.min(unit.maxHp, unit.currentHp + healAmount);
       logs.push({
         timestamp: Date.now(),
@@ -562,6 +589,19 @@ export const processPassives = (
             remainingTurns: 2,
           });
         }
+        if (trigger !== 'onAttack') {
+          logs.push({
+            timestamp: Date.now(),
+            type: 'passive',
+            sourceId: unit.id,
+            sourceName: unit.name,
+            targetId: unit.id,
+            targetName: unit.name,
+            passiveId: passive.id,
+            passiveName: passive.name,
+            message: `${passive.emoji} ${unit.name} 的被动【${passive.name}】触发！攻击力 +${passive.damageBonus}%！`,
+          });
+        }
       }
     }
 
@@ -577,7 +617,7 @@ export const processPassives = (
           remainingTurns: 2,
         });
       }
-      if (!passive.healPercent && !passive.damageBonus && !passive.statBonus) {
+      if (trigger !== 'onAttack') {
         logs.push({
           timestamp: Date.now(),
           type: 'passive',
@@ -813,6 +853,32 @@ export const checkComboTriggers = (
             message: `${seConfig.emoji} ${seTarget.name} 被组合技施加了${seConfig.name}！持续${combo.triggerStatusEffect.duration}回合`,
           });
         }
+      }
+
+      if (combo.teamBuff) {
+        const teamUnits = allUnits.filter(u => u.side === attacker.side && u.isAlive);
+        for (const teamUnit of teamUnits) {
+          const existingBuff = teamUnit.buffs.find(b => b.stat === combo.teamBuff!.stat);
+          if (existingBuff) {
+            existingBuff.value = Math.max(existingBuff.value, combo.teamBuff.value);
+            existingBuff.remainingTurns = Math.max(existingBuff.remainingTurns, combo.teamBuff.duration);
+          } else {
+            teamUnit.buffs.push({
+              stat: combo.teamBuff.stat,
+              value: combo.teamBuff.value,
+              remainingTurns: combo.teamBuff.duration,
+            });
+          }
+        }
+        logs.push({
+          timestamp: Date.now(),
+          type: 'comboTrigger',
+          sourceId: attacker.id,
+          sourceName: attacker.name,
+          comboTriggerId: combo.id,
+          comboTriggerName: combo.name,
+          message: `${combo.emoji} 组合技【${combo.name}】触发！全队${combo.teamBuff.stat.toUpperCase()} +${combo.teamBuff.value}%！`,
+        });
       }
     }
   }
@@ -1297,6 +1363,9 @@ export const simulateFullBattle = (
 
     let extraTurn = false;
 
+    const preBuffResult = processPassives(unit, 'onAttack', playerUnits, enemyUnits, { buffPhase: true });
+    fullBattleLog.push(...preBuffResult.logs);
+
     const skill = selectSkillForUnit(unit);
     let actionResult: ActionResult;
 
@@ -1314,6 +1383,8 @@ export const simulateFullBattle = (
     fullBattleLog.push(...actionResult.logs);
 
     const allUnits = [...playerUnits, ...enemyUnits];
+    const totalDamage = actionResult.targets.reduce((sum, tr) => sum + tr.damage, 0);
+    const anyCrit = actionResult.targets.some(tr => tr.isCrit);
 
     for (const tr of actionResult.targets) {
       if (tr.damage <= 0) continue;
@@ -1364,13 +1435,14 @@ export const simulateFullBattle = (
       }
     }
 
-    const hasDamage = actionResult.targets.some(tr => tr.damage > 0);
-    if (hasDamage) {
-      const attackResult = processPassives(unit, 'onAttack', playerUnits, enemyUnits, {
-        isCrit: actionResult.targets.some(tr => tr.isCrit),
+    if (totalDamage > 0) {
+      const reactResult = processPassives(unit, 'onAttack', playerUnits, enemyUnits, {
+        buffPhase: false,
+        damage: totalDamage,
+        isCrit: anyCrit,
       });
-      fullBattleLog.push(...attackResult.logs);
-      extraTurn = extraTurn || attackResult.extraTurn;
+      fullBattleLog.push(...reactResult.logs);
+      extraTurn = extraTurn || reactResult.extraTurn;
     }
 
     for (const tr of actionResult.targets) {

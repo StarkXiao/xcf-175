@@ -140,6 +140,14 @@ export default function Skills() {
                     <span className="text-[10px] text-gray-500">- {branch.passive.description}</span>
                   </div>
                 )}
+                <div className="mt-1 flex gap-3 pl-6 text-[10px] text-gray-600">
+                  {branch.damageModifier && (
+                    <span>伤害 ×{branch.damageModifier}</span>
+                  )}
+                  {branch.cooldownModifier && (
+                    <span>CD {branch.cooldownModifier > 0 ? '+' : ''}{branch.cooldownModifier}</span>
+                  )}
+                </div>
               </div>
             );
           })}
@@ -172,7 +180,10 @@ export default function Skills() {
           >
             <Flame className="w-3 h-3 text-cyber-cyan" />
             <span className="text-[10px] text-cyber-cyan font-bold">{combo.name}</span>
-            <span className="text-[10px] text-gray-400">+{combo.bonusDamage}</span>
+            <span className="text-[10px] text-gray-400">+{combo.bonusDamage}伤害</span>
+            {combo.teamBuff && (
+              <span className="text-[10px] text-cyber-yellow">全队{combo.teamBuff.stat.toUpperCase()}+{combo.teamBuff.value}%</span>
+            )}
           </div>
         ))}
       </div>
@@ -272,8 +283,8 @@ export default function Skills() {
                               {activeBranch ? activeBranch.description : template.description}
                             </p>
                             <div className="flex gap-4 mt-2 text-xs text-gray-500">
-                              <span>伤害: {template.damage}</span>
-                              <span>CD: {template.cooldown}回合</span>
+                              <span>伤害: {activeBranch?.damageModifier ? Math.floor(template.damage * activeBranch.damageModifier) : template.damage}</span>
+                              <span>CD: {activeBranch?.cooldownModifier ? template.cooldown + activeBranch.cooldownModifier : template.cooldown}回合</span>
                               {(template.statusEffect || activeBranch?.statusEffectOverride) && (
                                 <span
                                   style={{ color: STATUS_EFFECT_CONFIG[(activeBranch?.statusEffectOverride || template.statusEffect)!?.type].color }}

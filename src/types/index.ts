@@ -114,6 +114,7 @@ export interface ComboTrigger {
     duration: number;
     damage?: number;
   };
+  teamBuff?: { stat: 'atk' | 'def' | 'spd'; value: number; duration: number };
 }
 
 export type BattleSide = 'player' | 'enemy';
