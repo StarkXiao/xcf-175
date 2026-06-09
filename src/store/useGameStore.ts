@@ -17,6 +17,10 @@ import type {
   GachaPoolType,
   LimitedPoolConfig,
   GachaMultiResult,
+  Material,
+  StarLevel,
+  BreakthroughTier,
+  CodexEntry,
 } from '@/types';
 import { ANIMAL_TEMPLATES } from '@/data/animals';
 import { PART_TEMPLATES } from '@/data/parts';
@@ -35,6 +39,8 @@ import { simulateFullBattle } from '@/engine/battleEngine';
 import { getAnimalTemplate } from '@/data/animals';
 import { getPartTemplate } from '@/data/parts';
 import { getSkillTemplate } from '@/data/skills';
+import { MATERIAL_TEMPLATES, getMaterialTemplate } from '@/data/materials';
+import { getStarUpCost, getBreakthroughCost, getSkillSlotsForStar, getSkillLevelCapForBreakthrough, BATTLE_MATERIAL_DROPS } from '@/data/ascendConfig';
 
 interface GameState {
   player: {
@@ -51,6 +57,8 @@ interface GameState {
   ownedAnimals: Animal[];
   ownedParts: Part[];
   ownedSkills: Skill[];
+  ownedMaterials: Material[];
+  codex: CodexEntry[];
   lineup: string[];
   lineupConfig: LineupConfig;
   battleHistory: BattleRecord[];
@@ -104,6 +112,14 @@ interface GameState {
 
   getAnimalById: (id: string) => Animal | undefined;
   getLineupAnimals: () => Animal[];
+
+  starUpAnimal: (id: string) => boolean;
+  breakthroughAnimal: (id: string) => boolean;
+  addMaterials: (materials: { templateId: string; count: number }[]) => void;
+  getMaterialCount: (templateId: string) => number;
+  updateCodex: (templateId: string) => void;
+  canStarUp: (id: string) => boolean;
+  canBreakthrough: (id: string) => boolean;
 }
 
 const DEFAULT_PITY_STATE: PityState = {
@@ -123,6 +139,8 @@ const createAnimalFromTemplate = (templateId: string, rarity: Rarity): Animal =>
     name: template.name,
     rarity,
     level: 1,
+    starLevel: 1 as StarLevel,
+    breakthroughTier: 0 as BreakthroughTier,
     parts: [],
     skills: [],
     exp: 0,
@@ -259,6 +277,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   ownedAnimals: [],
   ownedParts: [],
   ownedSkills: [],
+  ownedMaterials: [],
+  codex: [],
   lineup: [],
   lineupConfig: { animals: [], actionPriority: 'speedFirst' },
   battleHistory: [],
@@ -301,6 +321,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       ownedAnimals: initialAnimals,
       ownedParts: initialParts,
       ownedSkills: initialSkills,
+      ownedMaterials: [],
+      codex: [],
       lineup: initialAnimals.map(a => a.id),
       lineupConfig: {
         animals: initialAnimals.map((a, i) => ({
@@ -327,13 +349,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!data) return false;
 
     const repairedAnimals = data.ownedAnimals.map(animal => {
-      let changed = false;
       const parts = animal.parts.map(ep => {
         if (!getPartTemplate(ep.partId)) {
           const match = PART_TEMPLATES.find(t => t.slot === ep.slot && t.rarity <= 2);
           if (match) {
             console.warn(`[运行时修复] 动物 ${animal.name} 部件 ${ep.partId} 模板未找到，降级为 ${match.id}`);
-            changed = true;
             return { ...ep, partId: match.id };
           }
         }
@@ -344,13 +364,19 @@ export const useGameStore = create<GameState>((set, get) => ({
           const match = SKILL_TEMPLATES.find(t => t.type === 'attack' && t.rarity <= 2);
           if (match) {
             console.warn(`[运行时修复] 动物 ${animal.name} 技能 ${es.skillId} 模板未找到，降级为 ${match.id}`);
-            changed = true;
             return { ...es, skillId: match.id };
           }
         }
         return es;
       });
-      return changed ? { ...animal, parts, skills } : animal;
+      let patched = { ...animal, parts, skills };
+      if (patched.starLevel === undefined) {
+        patched = { ...patched, starLevel: 1 as StarLevel };
+      }
+      if (patched.breakthroughTier === undefined) {
+        patched = { ...patched, breakthroughTier: 0 as BreakthroughTier };
+      }
+      return patched;
     });
 
     const pityState: PityState = data.pityState || { ...DEFAULT_PITY_STATE };
@@ -363,6 +389,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       ownedAnimals: repairedAnimals,
       ownedParts: data.ownedParts,
       ownedSkills: data.ownedSkills,
+      ownedMaterials: data.ownedMaterials || [],
+      codex: data.codex || [],
       lineup: data.lineup,
       lineupConfig: data.lineupConfig || {
         animals: data.lineup.map((id, i) => ({
@@ -388,12 +416,14 @@ export const useGameStore = create<GameState>((set, get) => ({
   saveGame: (force: boolean = false) => {
     const state = get();
     const saveData: SaveData = {
-      version: 4,
+      version: 5,
       timestamp: Date.now(),
       player: state.player,
       ownedAnimals: state.ownedAnimals,
       ownedParts: state.ownedParts,
       ownedSkills: state.ownedSkills,
+      ownedMaterials: state.ownedMaterials,
+      codex: state.codex,
       lineup: state.lineup,
       lineupConfig: state.lineupConfig,
       battleHistory: state.battleHistory,
@@ -426,6 +456,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       ownedAnimals: [],
       ownedParts: [],
       ownedSkills: [],
+      ownedMaterials: [],
+      codex: [],
       lineup: [],
       lineupConfig: { animals: [], actionPriority: 'speedFirst' },
       battleHistory: [],
@@ -616,7 +648,8 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     const animal = state.ownedAnimals.find(a => a.id === animalId);
     if (!animal) return false;
-    if (animal.skills.length >= BATTLE_CONSTANTS.MAX_SKILLS_PER_ANIMAL) return false;
+    const maxSkillSlots = getSkillSlotsForStar(animal.starLevel);
+    if (animal.skills.length >= maxSkillSlots) return false;
     if (animal.skills.some(s => s.skillId === skill.templateId)) return false;
 
     set(state => ({
@@ -1215,6 +1248,38 @@ export const useGameStore = create<GameState>((set, get) => ({
       battleHistory: [battleRecord, ...prev.battleHistory].slice(0, 50),
     }));
 
+    const dropConfig = result.isWin ? BATTLE_MATERIAL_DROPS.win : BATTLE_MATERIAL_DROPS.lose;
+    const droppedMaterials: { templateId: string; count: number }[] = [];
+
+    if (Math.random() * 100 < dropConfig.starMaterialChance) {
+      const count = Math.floor(Math.random() * (dropConfig.starMaterialCount.max - dropConfig.starMaterialCount.min + 1)) + dropConfig.starMaterialCount.min;
+      const starMats = MATERIAL_TEMPLATES.filter(m => m.type === 'star' && m.rarity <= 3);
+      if (starMats.length > 0) {
+        const chosen = starMats[Math.floor(Math.random() * starMats.length)];
+        droppedMaterials.push({ templateId: chosen.id, count });
+      }
+    }
+
+    if (Math.random() * 100 < dropConfig.btMaterialChance && lineupAnimals.length > 0) {
+      const count = Math.floor(Math.random() * (dropConfig.btMaterialCount.max - dropConfig.btMaterialCount.min + 1)) + dropConfig.btMaterialCount.min;
+      const elements = lineupAnimals.map(a => {
+        const t = getAnimalTemplate(a.templateId);
+        return t?.element;
+      }).filter(Boolean);
+      if (elements.length > 0) {
+        const chosenElement = elements[Math.floor(Math.random() * elements.length)]!;
+        const btMats = MATERIAL_TEMPLATES.filter(m => m.type === 'breakthrough' && m.element === chosenElement && m.rarity <= 2);
+        if (btMats.length > 0) {
+          const chosen = btMats[Math.floor(Math.random() * btMats.length)];
+          droppedMaterials.push({ templateId: chosen.id, count });
+        }
+      }
+    }
+
+    if (droppedMaterials.length > 0) {
+      get().addMaterials(droppedMaterials);
+    }
+
     get().saveGame(true);
 
     return {
@@ -1234,5 +1299,209 @@ export const useGameStore = create<GameState>((set, get) => ({
     return state.lineup
       .map(id => state.ownedAnimals.find(a => a.id === id))
       .filter(Boolean) as Animal[];
+  },
+
+  canStarUp: (id: string): boolean => {
+    const state = get();
+    const animal = state.ownedAnimals.find(a => a.id === id);
+    if (!animal) return false;
+
+    const cost = getStarUpCost(animal.starLevel);
+    if (!cost) return false;
+    if (animal.level < cost.requiredLevel) return false;
+    if (state.player.coins < cost.coins) return false;
+
+    for (const mat of cost.materials) {
+      const owned = state.ownedMaterials.filter(m => m.templateId === mat.templateId).length;
+      if (owned < mat.count) return false;
+    }
+
+    return true;
+  },
+
+  canBreakthrough: (id: string): boolean => {
+    const state = get();
+    const animal = state.ownedAnimals.find(a => a.id === id);
+    if (!animal) return false;
+
+    const template = getAnimalTemplate(animal.templateId);
+    if (!template) return false;
+
+    const cost = getBreakthroughCost(animal.breakthroughTier, template.element);
+    if (!cost) return false;
+    if (animal.level < cost.requiredLevel) return false;
+    if (animal.starLevel < cost.requiredStarLevel) return false;
+    if (state.player.coins < cost.coins) return false;
+
+    for (const mat of cost.materials) {
+      const owned = state.ownedMaterials.filter(m => m.templateId === mat.templateId).length;
+      if (owned < mat.count) return false;
+    }
+
+    return true;
+  },
+
+  starUpAnimal: (id: string): boolean => {
+    const state = get();
+    const animal = state.ownedAnimals.find(a => a.id === id);
+    if (!animal) return false;
+
+    const cost = getStarUpCost(animal.starLevel);
+    if (!cost) return false;
+    if (animal.level < cost.requiredLevel) return false;
+    if (state.player.coins < cost.coins) return false;
+
+    for (const mat of cost.materials) {
+      const owned = state.ownedMaterials.filter(m => m.templateId === mat.templateId).length;
+      if (owned < mat.count) return false;
+    }
+
+    const newStarLevel = (animal.starLevel + 1) as StarLevel;
+    const newSkillSlots = getSkillSlotsForStar(newStarLevel);
+
+    let materialsToRemove: string[] = [];
+    for (const mat of cost.materials) {
+      const matching = state.ownedMaterials
+        .filter(m => m.templateId === mat.templateId)
+        .slice(0, mat.count);
+      materialsToRemove = materialsToRemove.concat(matching.map(m => m.id));
+    }
+
+    set(state => ({
+      player: { ...state.player, coins: state.player.coins - cost.coins },
+      ownedAnimals: state.ownedAnimals.map(a =>
+        a.id === id
+          ? { ...a, starLevel: newStarLevel, skills: a.skills.slice(0, newSkillSlots) }
+          : a
+      ),
+      ownedMaterials: state.ownedMaterials.filter(m => !materialsToRemove.includes(m.id)),
+    }));
+
+    get().updateCodex(animal.templateId);
+    get().saveGame();
+    return true;
+  },
+
+  breakthroughAnimal: (id: string): boolean => {
+    const state = get();
+    const animal = state.ownedAnimals.find(a => a.id === id);
+    if (!animal) return false;
+
+    const template = getAnimalTemplate(animal.templateId);
+    if (!template) return false;
+
+    const cost = getBreakthroughCost(animal.breakthroughTier, template.element);
+    if (!cost) return false;
+    if (animal.level < cost.requiredLevel) return false;
+    if (animal.starLevel < cost.requiredStarLevel) return false;
+    if (state.player.coins < cost.coins) return false;
+
+    for (const mat of cost.materials) {
+      const owned = state.ownedMaterials.filter(m => m.templateId === mat.templateId).length;
+      if (owned < mat.count) return false;
+    }
+
+    const newTier = (animal.breakthroughTier + 1) as BreakthroughTier;
+    const newSkillLevelCap = getSkillLevelCapForBreakthrough(newTier);
+
+    let materialsToRemove: string[] = [];
+    for (const mat of cost.materials) {
+      const matching = state.ownedMaterials
+        .filter(m => m.templateId === mat.templateId)
+        .slice(0, mat.count);
+      materialsToRemove = materialsToRemove.concat(matching.map(m => m.id));
+    }
+
+    set(state => ({
+      player: { ...state.player, coins: state.player.coins - cost.coins },
+      ownedAnimals: state.ownedAnimals.map(a =>
+        a.id === id
+          ? {
+              ...a,
+              breakthroughTier: newTier,
+              skills: a.skills.map(s => ({
+                ...s,
+                level: Math.min(s.level, newSkillLevelCap),
+              })),
+            }
+          : a
+      ),
+      ownedMaterials: state.ownedMaterials.filter(m => !materialsToRemove.includes(m.id)),
+    }));
+
+    get().updateCodex(animal.templateId);
+    get().saveGame();
+    return true;
+  },
+
+  addMaterials: (materials: { templateId: string; count: number }[]) => {
+    const newMaterials: Material[] = [];
+    for (const mat of materials) {
+      const template = getMaterialTemplate(mat.templateId);
+      if (!template) continue;
+      for (let i = 0; i < mat.count; i++) {
+        newMaterials.push({
+          id: generateId('mat'),
+          templateId: template.id,
+          name: template.name,
+          description: template.description,
+          emoji: template.emoji,
+          rarity: template.rarity,
+          type: template.type,
+          element: template.element,
+        });
+      }
+    }
+
+    set(state => ({
+      ownedMaterials: [...state.ownedMaterials, ...newMaterials],
+    }));
+    get().saveGame();
+  },
+
+  getMaterialCount: (templateId: string): number => {
+    return get().ownedMaterials.filter(m => m.templateId === templateId).length;
+  },
+
+  updateCodex: (templateId: string) => {
+    const state = get();
+    const animals = state.ownedAnimals.filter(a => a.templateId === templateId);
+    if (animals.length === 0) return;
+
+    const highestStar = animals.reduce((max, a) => Math.max(max, a.starLevel), 1) as StarLevel;
+    const highestBt = animals.reduce((max, a) => Math.max(max, a.breakthroughTier), 0) as BreakthroughTier;
+
+    set(state => {
+      const existing = state.codex.find(c => c.templateId === templateId);
+      if (existing) {
+        if (highestStar <= existing.highestStarLevel && highestBt <= existing.highestBreakthroughTier) {
+          return {};
+        }
+        return {
+          codex: state.codex.map(c =>
+            c.templateId === templateId
+              ? {
+                  ...c,
+                  highestStarLevel: Math.max(c.highestStarLevel, highestStar) as StarLevel,
+                  highestBreakthroughTier: Math.max(c.highestBreakthroughTier, highestBt) as BreakthroughTier,
+                  isUnlocked: true,
+                }
+              : c
+          ),
+        };
+      }
+      return {
+        codex: [
+          ...state.codex,
+          {
+            templateId,
+            highestStarLevel: highestStar,
+            highestBreakthroughTier: highestBt,
+            isUnlocked: true,
+          },
+        ],
+      };
+    });
+    get().saveGame();
   },
 }));

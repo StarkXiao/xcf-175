@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router';
-import { Swords, Users, BookOpen, ShoppingBag, Trophy, Sparkles } from 'lucide-react';
+import { Swords, Users, BookOpen, ShoppingBag, Trophy, Sparkles, Star } from 'lucide-react';
 import { NeonButton } from '@/components/NeonButton';
 import { NeonCard } from '@/components/NeonCard';
 import { useGameStore } from '@/store/useGameStore';
@@ -133,6 +133,13 @@ export default function Home() {
               desc: '抽取新动物、部件和技能',
               action: () => navigate('/shop'),
               color: 'purple' as const,
+            },
+            {
+              icon: Star,
+              title: '升星突破',
+              desc: '消耗材料提升星级与突破等阶',
+              action: () => navigate('/ascend'),
+              color: 'yellow' as const,
             },
             {
               icon: Swords,

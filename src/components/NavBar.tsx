@@ -1,18 +1,17 @@
 import { NavLink } from 'react-router-dom';
-import { Swords, Users, Zap, RotateCcw, ShoppingBag, Home, Coins } from 'lucide-react';
+import { Swords, Users, Zap, ShoppingBag, Home, Coins, Star } from 'lucide-react';
 import { useGameStore } from '@/store/useGameStore';
 import { formatNumber } from '@/utils/format';
 
 export const NavBar = () => {
-  const player = useGameStore(state => state.player);
   const coins = useGameStore(state => state.player.coins);
 
   const navItems = [
     { to: '/', icon: Home, label: '大厅' },
     { to: '/lineup', icon: Users, label: '阵容' },
     { to: '/skills', icon: Zap, label: '技能' },
+    { to: '/ascend', icon: Star, label: '升星' },
     { to: '/battle', icon: Swords, label: '战斗' },
-    { to: '/replay', icon: RotateCcw, label: '回放' },
     { to: '/shop', icon: ShoppingBag, label: '商店' },
   ];
 

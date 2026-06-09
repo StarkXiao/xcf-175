@@ -10,6 +10,8 @@ import type {
   FormationPosition,
   TargetStrategy,
   ActionPriority,
+  StarLevel,
+  BreakthroughTier,
 } from '@/types';
 import { getAnimalTemplate } from '@/data/animals';
 import { getSkillTemplate } from '@/data/skills';
@@ -18,6 +20,7 @@ import { getRandomOpponent } from '@/data/opponents';
 import { generateId } from '@/utils/id';
 import { randomInt, pickRandom, chance } from '@/utils/random';
 import { BATTLE_CONSTANTS, RARITY_MULTIPLIER, STATUS_EFFECT_CONFIG, ELEMENT_NAMES, ELEMENT_EMOJIS } from './constants';
+import { getStarBonus, getBreakthroughBonus } from '@/data/ascendConfig';
 import {
   calculateDamage,
   calculateHeal,
@@ -43,11 +46,13 @@ export const calculateAnimalStats = (animal: Animal): {
 
   const levelMultiplier = 1 + (animal.level - 1) * 0.1;
   const rarityMultiplier = RARITY_MULTIPLIER[animal.rarity];
+  const starBonus = getStarBonus(animal.starLevel);
+  const btBonus = getBreakthroughBonus(animal.breakthroughTier);
 
-  let hp = Math.floor(template.baseHp * levelMultiplier * rarityMultiplier);
-  let atk = Math.floor(template.baseAtk * levelMultiplier * rarityMultiplier);
-  let def = Math.floor(template.baseDef * levelMultiplier * rarityMultiplier);
-  let spd = Math.floor(template.baseSpd * levelMultiplier * rarityMultiplier);
+  let hp = Math.floor(template.baseHp * levelMultiplier * rarityMultiplier * starBonus.hpMul) + btBonus.hpFlat;
+  let atk = Math.floor(template.baseAtk * levelMultiplier * rarityMultiplier * starBonus.atkMul) + btBonus.atkFlat;
+  let def = Math.floor(template.baseDef * levelMultiplier * rarityMultiplier * starBonus.defMul) + btBonus.defFlat;
+  let spd = Math.floor(template.baseSpd * levelMultiplier * rarityMultiplier) + starBonus.spdBonus + btBonus.spdFlat;
 
   animal.parts.forEach(ep => {
     const part = getPartTemplate(ep.partId);
@@ -142,6 +147,8 @@ export const createEnemyAnimal = (templateId: string, level: number, rarity: num
     templateId,
     name: template.name,
     level,
+    starLevel: 1 as StarLevel,
+    breakthroughTier: 0 as BreakthroughTier,
     exp: 0,
     expToNext: 100 * level,
     rarity: rarity as 1 | 2 | 3 | 4 | 5,

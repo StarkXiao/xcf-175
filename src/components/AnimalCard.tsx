@@ -3,7 +3,7 @@ import type { Animal } from '@/types';
 import { getAnimalTemplate } from '@/data/animals';
 import { getRarityColor, getRarityStars } from '@/utils/format';
 import { calculateAnimalStats } from '@/engine/battleEngine';
-import { ELEMENT_EMOJIS, ELEMENT_COLORS, ELEMENT_NAMES } from '@/engine/constants';
+import { ELEMENT_EMOJIS, ELEMENT_COLORS, ELEMENT_NAMES, STAR_LEVEL_NAMES, BREAKTHROUGH_TIER_NAMES } from '@/engine/constants';
 import { StatBar } from './StatBar';
 import { SkillIcon } from './SkillIcon';
 import { getPartTemplate } from '@/data/parts';
@@ -132,6 +132,17 @@ export const AnimalCard = ({
 
           <div className="text-xs" style={{ color: rarityColor }}>
             {getRarityStars(animal.rarity)}
+          </div>
+
+          <div className="flex items-center gap-1 mt-1">
+            <span className="text-xs px-1.5 py-0.5 rounded border border-cyber-yellow/30 bg-cyber-yellow/10 text-cyber-yellow font-cyber">
+              ⭐{STAR_LEVEL_NAMES[animal.starLevel]}
+            </span>
+            {animal.breakthroughTier > 0 && (
+              <span className="text-xs px-1.5 py-0.5 rounded border border-cyber-purple/30 bg-cyber-purple/10 text-cyber-purple font-cyber">
+                🔮{BREAKTHROUGH_TIER_NAMES[animal.breakthroughTier]}
+              </span>
+            )}
           </div>
 
           {!compact && showStats && (

@@ -17,6 +17,35 @@ export interface LineupConfig {
 
 export type Rarity = 1 | 2 | 3 | 4 | 5;
 
+export type StarLevel = 1 | 2 | 3 | 4 | 5 | 6;
+
+export type BreakthroughTier = 0 | 1 | 2 | 3 | 4;
+
+export type MaterialRarity = 1 | 2 | 3 | 4 | 5;
+
+export type MaterialType = 'star' | 'breakthrough';
+
+export interface MaterialTemplate {
+  id: string;
+  name: string;
+  description: string;
+  emoji: string;
+  rarity: MaterialRarity;
+  type: MaterialType;
+  element?: Element;
+}
+
+export interface Material {
+  id: string;
+  templateId: string;
+  name: string;
+  description: string;
+  emoji: string;
+  rarity: MaterialRarity;
+  type: MaterialType;
+  element?: Element;
+}
+
 export type PartSlot = 'head' | 'body' | 'limbs' | 'weapon' | 'core' | 'special';
 
 export type SkillType = 'attack' | 'heal' | 'buff' | 'debuff' | 'special';
@@ -115,6 +144,8 @@ export interface Animal {
   name: string;
   rarity: Rarity;
   level: number;
+  starLevel: StarLevel;
+  breakthroughTier: BreakthroughTier;
   parts: EquippedPart[];
   skills: EquippedSkill[];
   exp: number;
@@ -322,6 +353,13 @@ export interface PlayerData {
   totalRewardAmount: number;
 }
 
+export interface CodexEntry {
+  templateId: string;
+  highestStarLevel: StarLevel;
+  highestBreakthroughTier: BreakthroughTier;
+  isUnlocked: boolean;
+}
+
 export interface SaveData {
   version: number;
   timestamp: number;
@@ -329,6 +367,8 @@ export interface SaveData {
   ownedAnimals: Animal[];
   ownedParts: Part[];
   ownedSkills: Skill[];
+  ownedMaterials: Material[];
+  codex: CodexEntry[];
   lineup: string[];
   lineupConfig: LineupConfig;
   battleHistory: BattleRecord[];

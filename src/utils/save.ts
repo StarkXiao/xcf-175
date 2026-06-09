@@ -1,4 +1,4 @@
-import type { SaveData, Part, Skill, Animal, EquippedPart, EquippedSkill, PartSlot, PityState } from '@/types';
+import type { SaveData, Part, Skill, Animal, EquippedPart, EquippedSkill, PartSlot, PityState, StarLevel, BreakthroughTier } from '@/types';
 import { SAVE_KEY, STORAGE_THROTTLE } from '@/engine/constants';
 import { PART_TEMPLATES } from '@/data/parts';
 import { SKILL_TEMPLATES } from '@/data/skills';
@@ -49,7 +49,7 @@ export const hasExistingSave = (): boolean => {
 
 export const createNewSaveData = (): SaveData => {
   return {
-    version: 3,
+    version: 5,
     timestamp: Date.now(),
     player: {
       id: 'new_player',
@@ -65,6 +65,8 @@ export const createNewSaveData = (): SaveData => {
     ownedAnimals: [],
     ownedParts: [],
     ownedSkills: [],
+    ownedMaterials: [],
+    codex: [],
     lineup: [],
     lineupConfig: { animals: [], actionPriority: 'speedFirst' },
     battleHistory: [],
@@ -296,6 +298,22 @@ export const migrateSaveData = (data: SaveData): SaveData => {
         featuredSkillTemplateIds: ['skill_thunder', 'skill_charge', 'skill_thunder_wave'],
         endsAt: Date.now() + 30 * 24 * 60 * 60 * 1000,
       },
+    } as SaveData;
+  }
+
+  if (migrated.version < 5) {
+    const migratedAnimals = (migrated.ownedAnimals as Animal[]).map(animal => ({
+      ...animal,
+      starLevel: (animal.starLevel ?? 1) as StarLevel,
+      breakthroughTier: (animal.breakthroughTier ?? 0) as BreakthroughTier,
+    }));
+
+    migrated = {
+      ...migrated,
+      version: 5,
+      ownedAnimals: migratedAnimals,
+      ownedMaterials: (migrated as Record<string, unknown>).ownedMaterials || [],
+      codex: (migrated as Record<string, unknown>).codex || [],
     } as SaveData;
   }
 

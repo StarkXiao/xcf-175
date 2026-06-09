@@ -212,3 +212,32 @@ export const NEWBIE_GIFT = {
   coins: 500,
   animals: 3,
 } as const;
+
+export const STAR_LEVEL_NAMES: Record<number, string> = {
+  1: '一星',
+  2: '二星',
+  3: '三星',
+  4: '四星',
+  5: '五星',
+  6: '六星',
+};
+
+export const BREAKTHROUGH_TIER_NAMES: Record<number, string> = {
+  0: '未突破',
+  1: '突破一阶',
+  2: '突破二阶',
+  3: '突破三阶',
+  4: '突破四阶',
+};
+
+export const STAR_EMOJI = '⭐';
+
+export const BREAKTHROUGH_EMOJI = '🔮';
+
+export const CODEX_RANK_NAMES: Record<number, string> = {
+  0: '未解锁',
+  1: '初识',
+  2: '熟识',
+  3: '精通',
+  4: '传说',
+};
