@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+<head><title>注入旧格式存档</title></head>
+<body style="background:#0a0a1a;color:#0ff;font-family:monospace;padding:20px;">
+<h2>旧格式存档注入工具</h2>
+<button id="inject" style="background:#0ff;color:#000;font-size:18px;padding:10px 20px;cursor:pointer;">注入旧格式存档 (version 1)</button>
+<pre id="log" style="margin-top:16px;white-space:pre-wrap;"></pre>
+<script>
+const log = document.getElementById('log');
+document.getElementById('inject').onclick = () => {
+  const oldSave = {
+    version: 1,
+    timestamp: Date.now(),
+    player: {
+      id: 'player_old1',
+      coins: 2000,
+      gems: 5,
+      totalWins: 3,
+      totalLosses: 1,
+      highestWinStreak: 2,
+      currentWinStreak: 1,
+      totalBetAmount: 600,
+      totalRewardAmount: 1200,
+    },
+    ownedAnimals: [
+      {
+        id: 'animal_old1',
+        templateId: 'cat_stray',
+        name: '流浪猫',
+        rarity: 2,
+        level: 3,
+        parts: [
+          { partId: 'part_m1a2b3c_x9y8z7w6', slot: 'head' },
+          { partId: 'part_k4d5e6f_g7h8i9j0', slot: 'weapon' }
+        ],
+        skills: [
+          { skillId: 'skill_bite', level: 1 },
+          { skillId: 'skill_p2q3r4_s5t6u7v8', level: 2 }
+        ],
+        exp: 0,
+        expToNext: 300
+      },
+      {
+        id: 'animal_old2',
+        templateId: 'dog_stray',
+        name: '流浪狗',
+        rarity: 2,
+        level: 2,
+        parts: [
+          { partId: 'body_armor', slot: 'body' }
+        ],
+        skills: [
+          { skillId: 'skill_claw', level: 1 },
+          { skillId: 'skill_heal', level: 1 }
+        ],
+        exp: 0,
+        expToNext: 200
+      },
+      {
+        id: 'animal_old3',
+        templateId: 'rat_sewer',
+        name: '下水道鼠',
+        rarity: 1,
+        level: 1,
+        parts: [],
+        skills: [
+          { skillId: 'skill_bite', level: 1 }
+        ],
+        exp: 0,
+        expToNext: 100
+      }
+    ],
+    ownedParts: [
+      {
+        id: 'part_z1y2x3_w4v5u6t7',
+        name: '防弹背心',
+        slot: 'body',
+        rarity: 2,
+        stats: { def: 10 },
+        emoji: '🎽',
+        price: 120
+      },
+      {
+        id: 'part_a1b2c3_d4e5f6g7',
+        name: '锁链',
+        slot: 'weapon',
+        rarity: 2,
+        stats: { atk: 10, spd: 5 },
+        emoji: '⛓️',
+        price: 150
+      }
+    ],
+    ownedSkills: [
+      {
+        id: 'skill_h1i2j3_k4l5m6n7',
+        name: '自愈',
+        type: 'heal',
+        damage: 0,
+        cooldown: 4,
+        cost: 0,
+        emoji: '💚',
+        rarity: 3,
+        description: '恢复自身一定百分比的生命值。',
+        effect: { healPercent: 25 }
+      },
+      {
+        id: 'skill_o1p2q3_r4s5t6u7',
+        name: '嚎叫',
+        type: 'debuff',
+        damage: 0,
+        cooldown: 3,
+        cost: 0,
+        emoji: '📢',
+        rarity: 2,
+        description: '发出震慑的嚎叫，降低敌方攻击力。',
+        effect: { stat: 'atk', value: -20, duration: 2 }
+      }
+    ],
+    lineup: ['animal_old1', 'animal_old2', 'animal_old3'],
+    battleHistory: []
+  };
+
+  localStorage.setItem('neon_coliseum_save', JSON.stringify(oldSave));
+  log.textContent = '✅ 旧格式存档已注入！\n\n关键测试场景：\n' +
+    '1. 流浪猫 head: 孤儿部件ID(part_m1a2b3c_x9y8z7w6) → 应降级为 head 槽位模板\n' +
+    '2. 流浪猫 weapon: 孤儿部件ID(part_k4d5e6f_g7h8i9j0) → 应降级为 weapon 槽位模板\n' +
+    '3. 流浪猫 skill_bite: 模板ID(保留) | skill_p2q3r4_s5t6u7v8: 孤儿技能ID → 应降级\n' +
+    '4. 流浪狗 body_armor: 模板ID(保留不变)\n' +
+    '5. 背包 part_z1y2x3_w4v5u6t7 防弹背心: 无templateId → 应推断为 body_armor\n' +
+    '6. 背包 skill_h1i2j3_k4l5m6n7 自愈: 无templateId → 应推断为 skill_heal\n\n' +
+    '现在访问 http://localhost:5174/ 验证迁移！';
+};
+</script>
+</body>
+</html>

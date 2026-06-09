@@ -201,9 +201,36 @@ export const useGameStore = create<GameState>((set, get) => ({
     const data = loadFromLocalStorage();
     if (!data) return false;
 
+    const repairedAnimals = data.ownedAnimals.map(animal => {
+      let changed = false;
+      const parts = animal.parts.map(ep => {
+        if (!getPartTemplate(ep.partId)) {
+          const match = PART_TEMPLATES.find(t => t.slot === ep.slot && t.rarity <= 2);
+          if (match) {
+            console.warn(`[运行时修复] 动物 ${animal.name} 部件 ${ep.partId} 模板未找到，降级为 ${match.id}`);
+            changed = true;
+            return { ...ep, partId: match.id };
+          }
+        }
+        return ep;
+      });
+      const skills = animal.skills.map(es => {
+        if (!getSkillTemplate(es.skillId)) {
+          const match = SKILL_TEMPLATES.find(t => t.type === 'attack' && t.rarity <= 2);
+          if (match) {
+            console.warn(`[运行时修复] 动物 ${animal.name} 技能 ${es.skillId} 模板未找到，降级为 ${match.id}`);
+            changed = true;
+            return { ...es, skillId: match.id };
+          }
+        }
+        return es;
+      });
+      return changed ? { ...animal, parts, skills } : animal;
+    });
+
     set({
       player: data.player,
-      ownedAnimals: data.ownedAnimals,
+      ownedAnimals: repairedAnimals,
       ownedParts: data.ownedParts,
       ownedSkills: data.ownedSkills,
       lineup: data.lineup,
@@ -213,13 +240,14 @@ export const useGameStore = create<GameState>((set, get) => ({
       isInitialized: true,
     });
 
+    get().saveGame(true);
     return true;
   },
 
   saveGame: (force: boolean = false) => {
     const state = get();
     const saveData: SaveData = {
-      version: 1,
+      version: 2,
       timestamp: Date.now(),
       player: state.player,
       ownedAnimals: state.ownedAnimals,

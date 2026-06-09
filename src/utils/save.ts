@@ -1,7 +1,7 @@
-import type { SaveData, Part, Skill, Animal } from '@/types';
+import type { SaveData, Part, Skill, Animal, EquippedPart, EquippedSkill, PartSlot } from '@/types';
 import { SAVE_KEY, STORAGE_THROTTLE } from '@/engine/constants';
-import { PART_TEMPLATES } from '@/data/parts';
-import { SKILL_TEMPLATES } from '@/data/skills';
+import { PART_TEMPLATES, getPartTemplate } from '@/data/parts';
+import { SKILL_TEMPLATES, getSkillTemplate } from '@/data/skills';
 
 let saveTimeout: NodeJS.Timeout | null = null;
 
@@ -109,20 +109,66 @@ export const validateSaveData = (data: unknown): data is SaveData => {
   );
 };
 
-const inferTemplateId = (instance: Partial<Part | Skill>): string | null => {
-  if ('slot' in instance) {
-    const part = instance as Partial<Part>;
+const isTemplateId = (id: string, type: 'part' | 'skill'): boolean => {
+  if (type === 'part') return PART_TEMPLATES.some(t => t.id === id);
+  return SKILL_TEMPLATES.some(t => t.id === id);
+};
+
+const inferPartTemplateId = (instance: Partial<Part>): string | null => {
+  if (instance.templateId) return instance.templateId;
+  if ('slot' in instance && instance.name && instance.rarity !== undefined) {
     const match = PART_TEMPLATES.find(
-      t => t.name === part.name && t.slot === part.slot && t.rarity === part.rarity
+      t => t.name === instance.name && t.slot === instance.slot && t.rarity === instance.rarity
     );
-    return match?.id || null;
-  } else {
-    const skill = instance as Partial<Skill>;
-    const match = SKILL_TEMPLATES.find(
-      t => t.name === skill.name && t.type === skill.type && t.rarity === skill.rarity
-    );
-    return match?.id || null;
+    if (match) return match.id;
   }
+  return null;
+};
+
+const inferSkillTemplateId = (instance: Partial<Skill>): string | null => {
+  if (instance.templateId) return instance.templateId;
+  if (instance.name && instance.type && instance.rarity !== undefined) {
+    const match = SKILL_TEMPLATES.find(
+      t => t.name === instance.name && t.type === instance.type && t.rarity === instance.rarity
+    );
+    if (match) return match.id;
+  }
+  return null;
+};
+
+const INSTANCE_ID_RE = /^(?:part|skill)_[0-9a-z]+_[0-9a-z]+$/;
+
+const resolvePartId = (
+  id: string,
+  instanceMap: Record<string, string>,
+  slot: PartSlot
+): string => {
+  if (instanceMap[id]) return instanceMap[id];
+  if (isTemplateId(id, 'part')) return id;
+  if (INSTANCE_ID_RE.test(id)) {
+    const fallback = PART_TEMPLATES.find(t => t.slot === slot && t.rarity <= 2);
+    if (fallback) {
+      console.warn(`[迁移] 孤儿部件ID ${id} 无法匹配，按槽位 ${slot} 降级为 ${fallback.id}`);
+      return fallback.id;
+    }
+  }
+  return id;
+};
+
+const resolveSkillId = (
+  id: string,
+  instanceMap: Record<string, string>
+): string => {
+  if (instanceMap[id]) return instanceMap[id];
+  if (isTemplateId(id, 'skill')) return id;
+  if (INSTANCE_ID_RE.test(id)) {
+    const fallback = SKILL_TEMPLATES.find(t => t.type === 'attack' && t.rarity <= 2);
+    if (fallback) {
+      console.warn(`[迁移] 孤儿技能ID ${id} 无法匹配，降级为 ${fallback.id}`);
+      return fallback.id;
+    }
+  }
+  return id;
 };
 
 export const migrateSaveData = (data: SaveData): SaveData => {
@@ -132,41 +178,27 @@ export const migrateSaveData = (data: SaveData): SaveData => {
   const skillInstanceToTemplate: Record<string, string> = {};
 
   const migratedParts = data.ownedParts.map(part => {
-    if (!part.templateId) {
-      const templateId = inferTemplateId(part);
-      if (templateId) {
-        partInstanceToTemplate[part.id] = templateId;
-        return { ...part, templateId };
-      }
-    } else {
-      partInstanceToTemplate[part.id] = part.templateId;
-    }
-    return part;
+    const templateId = inferPartTemplateId(part);
+    if (templateId) partInstanceToTemplate[part.id] = templateId;
+    return templateId ? { ...part, templateId } : part;
   });
 
   const migratedSkills = data.ownedSkills.map(skill => {
-    if (!skill.templateId) {
-      const templateId = inferTemplateId(skill);
-      if (templateId) {
-        skillInstanceToTemplate[skill.id] = templateId;
-        return { ...skill, templateId };
-      }
-    } else {
-      skillInstanceToTemplate[skill.id] = skill.templateId;
-    }
-    return skill;
+    const templateId = inferSkillTemplateId(skill);
+    if (templateId) skillInstanceToTemplate[skill.id] = templateId;
+    return templateId ? { ...skill, templateId } : skill;
   });
 
   const migrateAnimal = (animal: Animal): Animal => {
-    const migratedParts = animal.parts.map(ep => {
-      const templateId = partInstanceToTemplate[ep.partId] || ep.partId;
-      return { ...ep, partId: templateId };
-    });
+    const migratedParts: EquippedPart[] = animal.parts.map(ep => ({
+      ...ep,
+      partId: resolvePartId(ep.partId, partInstanceToTemplate, ep.slot),
+    }));
 
-    const migratedSkills = animal.skills.map(es => {
-      const templateId = skillInstanceToTemplate[es.skillId] || es.skillId;
-      return { ...es, skillId: templateId };
-    });
+    const migratedSkills: EquippedSkill[] = animal.skills.map(es => ({
+      ...es,
+      skillId: resolveSkillId(es.skillId, skillInstanceToTemplate),
+    }));
 
     return { ...animal, parts: migratedParts, skills: migratedSkills };
   };
@@ -179,7 +211,7 @@ export const migrateSaveData = (data: SaveData): SaveData => {
         ...unit,
         skills: unit.skills.map(s => ({
           ...s,
-          skillId: skillInstanceToTemplate[s.skillId] || s.skillId,
+          skillId: resolveSkillId(s.skillId, skillInstanceToTemplate),
         })),
       } as T;
     };
