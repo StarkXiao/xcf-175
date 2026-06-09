@@ -545,7 +545,7 @@ export default function Replay() {
             <div className="flex gap-2 mb-4 flex-wrap">
               <NeonButton
                 size="sm"
-                variant={showKeyEvents ? 'default' : 'ghost'}
+                variant={showKeyEvents ? 'yellow' : 'ghost'}
                 onClick={() => setShowKeyEvents(!showKeyEvents)}
               >
                 <Zap className="w-3 h-3 mr-1" />
