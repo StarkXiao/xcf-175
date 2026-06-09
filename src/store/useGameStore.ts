@@ -358,12 +358,13 @@ export const useGameStore = create<GameState>((set, get) => ({
           const match = PART_TEMPLATES.find(t => t.slot === ep.slot && t.rarity <= 2);
           if (match) {
             console.warn(`[运行时修复] 动物 ${animal.name} 部件 ${ep.partId} 模板未找到，降级为 ${match.id}`);
-            return { ...ep, partId: match.id };
+            return { ...ep, partId: match.id, instanceId: ep.instanceId || generateId('part') };
           }
         }
         const template = getPartTemplate(ep.partId);
         return {
           ...ep,
+          instanceId: ep.instanceId || generateId('part'),
           quality: ep.quality || 1 as PartQuality,
           setId: ep.setId || template?.setId,
         };
@@ -434,7 +435,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   saveGame: (force: boolean = false) => {
     const state = get();
     const saveData: SaveData = {
-      version: 7,
+      version: 8,
       timestamp: Date.now(),
       player: state.player,
       ownedAnimals: state.ownedAnimals,
@@ -607,6 +608,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     const equippedData: EquippedPart = {
       partId: part.templateId,
+      instanceId: part.id,
       slot,
       quality: part.quality,
       setId: part.setId,
@@ -689,24 +691,16 @@ export const useGameStore = create<GameState>((set, get) => ({
       ),
     }));
 
-    const animalUsing = state.ownedAnimals.find(a =>
-      a.parts.some(ep => ep.partId === part.templateId && ep.quality === currentQuality)
-    );
-    if (animalUsing) {
-      set(state => ({
-        ownedAnimals: state.ownedAnimals.map(a => {
-          if (a.id !== animalUsing.id) return a;
-          return {
-            ...a,
-            parts: a.parts.map(ep =>
-              ep.partId === part.templateId && ep.quality === currentQuality
-                ? { ...ep, quality: nextQuality }
-                : ep
-            ),
-          };
-        }),
-      }));
-    }
+    set(state => ({
+      ownedAnimals: state.ownedAnimals.map(a => ({
+        ...a,
+        parts: a.parts.map(ep =>
+          ep.instanceId === partId
+            ? { ...ep, quality: nextQuality }
+            : ep
+        ),
+      })),
+    }));
 
     get().saveGame();
     return true;

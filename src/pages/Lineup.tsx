@@ -85,10 +85,13 @@ export default function Lineup() {
 
   const handleEquipPart = (partId: string) => {
     if (!selectedAnimal || !selectedSlot) return;
+    const partInstance = ownedParts.find(p => p.id === partId);
     equipPart(selectedAnimal.id, partId, selectedSlot);
     setShowPartPicker(false);
     setSelectedSlot(null);
-    setSelectedAnimal(prev => prev ? { ...prev, parts: [...prev.parts.filter(p => p.slot !== selectedSlot), { partId, slot: selectedSlot }] } : null);
+    if (partInstance) {
+      setSelectedAnimal(prev => prev ? { ...prev, parts: [...prev.parts.filter(p => p.slot !== selectedSlot), { partId: partInstance.templateId, instanceId: partId, slot: selectedSlot, quality: partInstance.quality, setId: partInstance.setId }] } : null);
+    }
   };
 
   const handleUnequipPart = (slot: PartSlotType) => {

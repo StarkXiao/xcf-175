@@ -218,6 +218,7 @@ export interface OpponentTemplate {
 
 export interface EquippedPart {
   partId: string;
+  instanceId: string;
   slot: PartSlot;
   quality?: PartQuality;
   setId?: string;
