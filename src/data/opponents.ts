@@ -1,4 +1,19 @@
-import type { OpponentTemplate } from '@/types';
+import type {
+  OpponentTemplate,
+  Animal,
+  DynamicDifficultyTier,
+  DynamicOpponentContext,
+  DynamicEnemyTeamResult,
+  StarLevel,
+  BreakthroughTier,
+} from '@/types';
+import { getAnimalTemplate } from '@/data/animals';
+import { getPartTemplate, QUALITY_MULTIPLIER } from '@/data/parts';
+import { getSkillTemplate } from '@/data/skills';
+import { getStarBonus, getBreakthroughBonus } from '@/data/ascendConfig';
+import { RARITY_MULTIPLIER } from '@/engine/constants';
+import { generateId } from '@/utils/id';
+import { randomInt, pickRandom, chance } from '@/utils/random';
 
 export const OPPONENT_TEMPLATES: OpponentTemplate[] = [
   {
@@ -83,6 +98,47 @@ export const OPPONENT_TEMPLATES: OpponentTemplate[] = [
   },
 ];
 
+export const DYNAMIC_DIFFICULTY_THRESHOLDS: { tier: DynamicDifficultyTier; minScore: number; diffMul: number; rewardMul: number }[] = [
+  { tier: 'trivial', minScore: 0, diffMul: 0.7, rewardMul: 0.8 },
+  { tier: 'easy', minScore: 15, diffMul: 0.85, rewardMul: 1.0 },
+  { tier: 'normal', minScore: 30, diffMul: 1.0, rewardMul: 1.2 },
+  { tier: 'hard', minScore: 50, diffMul: 1.2, rewardMul: 1.5 },
+  { tier: 'extreme', minScore: 70, diffMul: 1.4, rewardMul: 1.8 },
+  { tier: 'nightmare', minScore: 90, diffMul: 1.6, rewardMul: 2.2 },
+];
+
+const WIN_STREAK_BONUS_PER_STREAK = 0.08;
+const WIN_STREAK_CAP = 8;
+const LINEUP_REUSE_PENALTY_PER_REPEAT = 0.06;
+const LINEUP_REUSE_CAP = 5;
+
+export const DYNAMIC_TIER_NAMES: Record<DynamicDifficultyTier, string> = {
+  trivial: '入门',
+  easy: '简单',
+  normal: '普通',
+  hard: '困难',
+  extreme: '极难',
+  nightmare: '噩梦',
+};
+
+export const DYNAMIC_TIER_EMOJIS: Record<DynamicDifficultyTier, string> = {
+  trivial: '🟢',
+  easy: '🔵',
+  normal: '🟡',
+  hard: '🟠',
+  extreme: '🔴',
+  nightmare: '💀',
+};
+
+export const DYNAMIC_TIER_COLORS: Record<DynamicDifficultyTier, string> = {
+  trivial: '#44cc44',
+  easy: '#4488ff',
+  normal: '#ffcc00',
+  hard: '#ff8800',
+  extreme: '#ff2200',
+  nightmare: '#cc00ff',
+};
+
 export const getOpponentTemplate = (id: string): OpponentTemplate | undefined => {
   return OPPONENT_TEMPLATES.find(o => o.id === id);
 };
@@ -94,4 +150,172 @@ export const getOpponentsByDifficulty = (difficulty: OpponentTemplate['difficult
 export const getRandomOpponent = (difficulty?: OpponentTemplate['difficulty']): OpponentTemplate => {
   const pool = difficulty ? getOpponentsByDifficulty(difficulty) : OPPONENT_TEMPLATES;
   return pool[Math.floor(Math.random() * pool.length)];
+};
+
+export const computePlayerStrengthScore = (animals: Animal[]): number => {
+  if (animals.length === 0) return 0;
+
+  let totalScore = 0;
+
+  for (const animal of animals) {
+    const template = getAnimalTemplate(animal.templateId);
+    if (!template) continue;
+
+    const levelMul = 1 + (animal.level - 1) * 0.1;
+    const rarityMul = RARITY_MULTIPLIER[animal.rarity];
+    const starBonus = getStarBonus(animal.starLevel);
+    const btBonus = getBreakthroughBonus(animal.breakthroughTier);
+
+    const hp = template.baseHp * levelMul * rarityMul * starBonus.hpMul + btBonus.hpFlat;
+    const atk = template.baseAtk * levelMul * rarityMul * starBonus.atkMul + btBonus.atkFlat;
+    const def = template.baseDef * levelMul * rarityMul * starBonus.defMul + btBonus.defFlat;
+    const spd = template.baseSpd * levelMul * rarityMul + starBonus.spdBonus + btBonus.spdFlat;
+
+    let partScore = 0;
+    for (const ep of animal.parts) {
+      const part = getPartTemplate(ep.partId);
+      if (part) {
+        const qMul = QUALITY_MULTIPLIER[ep.quality || 1];
+        partScore += ((part.stats.hp || 0) + (part.stats.atk || 0) * 2 + (part.stats.def || 0) * 1.5 + (part.stats.spd || 0)) * qMul;
+      }
+    }
+
+    let skillScore = 0;
+    for (const es of animal.skills) {
+      const skill = getSkillTemplate(es.skillId);
+      if (skill) {
+        skillScore += skill.damage * (1 + (es.level - 1) * 0.15) * RARITY_MULTIPLIER[skill.rarity];
+      }
+    }
+
+    const baseScore = (hp / 10 + atk * 2 + def * 1.5 + spd) + partScore / 20 + skillScore / 15;
+    const starTierBonus = (animal.starLevel - 1) * 3;
+    const btTierBonus = animal.breakthroughTier * 4;
+
+    totalScore += baseScore + starTierBonus + btTierBonus;
+  }
+
+  return Math.round(totalScore / animals.length);
+};
+
+export const computeLineupSignature = (lineupAnimalIds: string[]): string => {
+  return [...lineupAnimalIds].sort().join('|');
+};
+
+export const countLineupRepeats = (currentSignature: string, recentSignatures: string[]): number => {
+  return recentSignatures.filter(sig => sig === currentSignature).length;
+};
+
+export const calculateDynamicDifficulty = (
+  playerStrengthScore: number,
+  playerAvgLevel: number,
+  currentWinStreak: number,
+  recentLineupSignatures: string[],
+): DynamicOpponentContext => {
+  let baseTier: DynamicDifficultyTier = 'trivial';
+  let diffMul = 0.7;
+  let rewardMul = 0.8;
+
+  for (let i = DYNAMIC_DIFFICULTY_THRESHOLDS.length - 1; i >= 0; i--) {
+    if (playerStrengthScore >= DYNAMIC_DIFFICULTY_THRESHOLDS[i].minScore) {
+      baseTier = DYNAMIC_DIFFICULTY_THRESHOLDS[i].tier;
+      diffMul = DYNAMIC_DIFFICULTY_THRESHOLDS[i].diffMul;
+      rewardMul = DYNAMIC_DIFFICULTY_THRESHOLDS[i].rewardMul;
+      break;
+    }
+  }
+
+  const streakBonus = Math.min(currentWinStreak, WIN_STREAK_CAP) * WIN_STREAK_BONUS_PER_STREAK;
+  diffMul += streakBonus;
+  rewardMul += streakBonus * 0.5;
+
+  const currentSig = recentLineupSignatures.length > 0 ? recentLineupSignatures[0] : '';
+  const repeatCount = countLineupRepeats(currentSig, recentLineupSignatures.slice(1));
+  const reusePenalty = Math.min(repeatCount, LINEUP_REUSE_CAP) * LINEUP_REUSE_PENALTY_PER_REPEAT;
+  diffMul += reusePenalty;
+
+  if (diffMul >= 1.5) {
+    baseTier = 'nightmare';
+  } else if (diffMul >= 1.3) {
+    baseTier = 'extreme';
+  } else if (diffMul >= 1.1) {
+    baseTier = 'hard';
+  }
+
+  return {
+    playerStrengthScore,
+    playerAvgLevel,
+    currentWinStreak,
+    recentLineupSignatures,
+    difficultyMultiplier: Math.round(diffMul * 100) / 100,
+    rewardMultiplier: Math.round(rewardMul * 100) / 100,
+    difficultyTier: baseTier,
+  };
+};
+
+export const generateDynamicEnemyTeam = (
+  context: DynamicOpponentContext,
+): DynamicEnemyTeamResult => {
+  const { playerAvgLevel, difficultyMultiplier, difficultyTier } = context;
+
+  let opponentBaseDifficulty: OpponentTemplate['difficulty'];
+  if (difficultyTier === 'trivial' || difficultyTier === 'easy') {
+    opponentBaseDifficulty = 'easy';
+  } else if (difficultyTier === 'normal') {
+    opponentBaseDifficulty = 'normal';
+  } else {
+    opponentBaseDifficulty = 'hard';
+  }
+
+  const opponent = getRandomOpponent(opponentBaseDifficulty);
+
+  const rawMinLevel = Math.max(1, playerAvgLevel + opponent.levelRange[0] - 3);
+  const rawMaxLevel = Math.max(rawMinLevel + 1, playerAvgLevel + opponent.levelRange[1] - 3);
+
+  const levelBoost = Math.floor((difficultyMultiplier - 1) * 3);
+  const minLevel = Math.max(1, rawMinLevel + levelBoost);
+  const maxLevel = Math.max(minLevel + 1, rawMaxLevel + levelBoost);
+
+  const enemyAnimals = opponent.animalTemplates.map(templateId => {
+    const level = randomInt(minLevel, maxLevel);
+    const rarityChance = 20 + Math.floor(difficultyMultiplier * 15);
+    const rarity = chance(rarityChance) ? 3 : chance(rarityChance / 2) ? 2 : 1;
+    return createEnemyAnimalDynamic(templateId, level, rarity as 1 | 2 | 3, difficultyMultiplier);
+  });
+
+  const rewardMul = context.rewardMultiplier;
+  const effectiveRewardMultiplier = opponent.betMultiplier * rewardMul;
+
+  return {
+    opponent,
+    animals: enemyAnimals,
+    effectiveDifficulty: difficultyTier,
+    difficultyMultiplier,
+    rewardMultiplier: effectiveRewardMultiplier,
+  };
+};
+
+const createEnemyAnimalDynamic = (templateId: string, level: number, rarity: 1 | 2 | 3, diffMul: number): Animal => {
+  const template = getAnimalTemplate(templateId);
+  if (!template) {
+    throw new Error(`Animal template not found: ${templateId}`);
+  }
+
+  const skillPool = ['skill_bite', 'skill_claw', 'skill_fireball', 'skill_ice_shard', 'skill_thunder_bolt', 'skill_poison_fang'];
+  const skillCount = diffMul >= 1.4 ? 3 : diffMul >= 1.1 ? 2 : 1;
+  const skills = skillPool.slice(0, skillCount).map(sid => ({ skillId: sid, level: Math.min(5, Math.ceil(level / 2)) }));
+
+  return {
+    id: generateId('enemy'),
+    templateId,
+    name: template.name,
+    level,
+    starLevel: (diffMul >= 1.3 ? 2 : 1) as StarLevel,
+    breakthroughTier: (diffMul >= 1.5 ? 1 : 0) as BreakthroughTier,
+    exp: 0,
+    expToNext: 100 * level,
+    rarity: rarity as 1 | 2 | 3,
+    parts: [],
+    skills,
+  };
 };

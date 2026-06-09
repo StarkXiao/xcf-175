@@ -216,6 +216,26 @@ export interface OpponentTemplate {
   betMultiplier: number;
 }
 
+export type DynamicDifficultyTier = 'trivial' | 'easy' | 'normal' | 'hard' | 'extreme' | 'nightmare';
+
+export interface DynamicOpponentContext {
+  playerStrengthScore: number;
+  playerAvgLevel: number;
+  currentWinStreak: number;
+  recentLineupSignatures: string[];
+  difficultyMultiplier: number;
+  rewardMultiplier: number;
+  difficultyTier: DynamicDifficultyTier;
+}
+
+export interface DynamicEnemyTeamResult {
+  opponent: OpponentTemplate;
+  animals: Animal[];
+  effectiveDifficulty: DynamicDifficultyTier;
+  difficultyMultiplier: number;
+  rewardMultiplier: number;
+}
+
 export interface EquippedPart {
   partId: string;
   instanceId: string;

@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { Swords, ArrowLeft, FastForward, Pause, Play } from 'lucide-react';
+import { Swords, ArrowLeft, FastForward, Pause, Play, Flame, TrendingUp, AlertTriangle } from 'lucide-react';
 import { NeonButton } from '@/components/NeonButton';
 import { NeonCard } from '@/components/NeonCard';
 import { BattleUnitDisplay } from '@/components/BattleUnitDisplay';
@@ -10,13 +10,14 @@ import { useBattleStore } from '@/store/useBattleStore';
 import { BATTLE_CONSTANTS } from '@/engine/constants';
 import type { BattleLogEntry } from '@/types';
 import { getRarityColor } from '@/utils/format';
+import { computePlayerStrengthScore, computeLineupSignature, calculateDynamicDifficulty, DYNAMIC_TIER_NAMES, DYNAMIC_TIER_EMOJIS, DYNAMIC_TIER_COLORS } from '@/data/opponents';
 
 export default function Battle() {
   const navigate = useNavigate();
   const params = useParams();
   const battleId = params.id;
 
-  const { battleHistory, lineup, getLineupAnimals, startBattle } = useGameStore();
+  const { battleHistory, lineup, getLineupAnimals, startBattle, player } = useGameStore();
 
   const lineupAnimals = getLineupAnimals();
   const {
@@ -41,6 +42,18 @@ export default function Battle() {
 
   const [betAmount, setBetAmount] = useState(100);
   const [showBetModal, setShowBetModal] = useState(!battleId);
+
+  const dynamicInfo = useMemo(() => {
+    if (lineupAnimals.length === 0) return null;
+    const strengthScore = computePlayerStrengthScore(lineupAnimals);
+    const avgLevel = Math.floor(lineupAnimals.reduce((s, a) => s + a.level, 0) / lineupAnimals.length);
+    const currentSig = computeLineupSignature(lineup);
+    const recentSigs = [
+      currentSig,
+      ...battleHistory.slice(0, 9).map(r => computeLineupSignature(r.playerLineup)),
+    ];
+    return calculateDynamicDifficulty(strengthScore, avgLevel, player.currentWinStreak, recentSigs);
+  }, [lineupAnimals, player.currentWinStreak, battleHistory, lineup]);
 
   useEffect(() => {
     if (battleId) {
@@ -113,6 +126,13 @@ export default function Battle() {
     }
     return { x: window.innerWidth / 2, y: window.innerHeight / 2 };
   };
+
+  const estimatedReward = useMemo(() => {
+    if (!dynamicInfo || betAmount === 0) return 0;
+    const baseMultiplier = 1.5;
+    const effectiveMultiplier = baseMultiplier * dynamicInfo.rewardMultiplier;
+    return Math.floor(betAmount * effectiveMultiplier);
+  }, [dynamicInfo, betAmount]);
 
   if (!battleRecord && !showBetModal) {
     return (
@@ -324,20 +344,78 @@ export default function Battle() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4 mb-6">
+                <div className="grid grid-cols-2 gap-4 mb-4">
                   <div className="text-center p-3 bg-cyber-darker rounded-lg">
-                    <div className="text-xs text-gray-400 mb-1">我方战力</div>
+                    <div className="text-xs text-gray-400 mb-1">战力评分</div>
                     <div className="text-cyber-cyan font-cyber font-bold text-xl">
-                      {lineupAnimals.reduce((sum, a) => sum + a.level * 10, 0)}
+                      {dynamicInfo?.playerStrengthScore ?? 0}
                     </div>
                   </div>
                   <div className="text-center p-3 bg-cyber-darker rounded-lg">
                     <div className="text-xs text-gray-400 mb-1">预计奖励</div>
                     <div className="text-cyber-green font-cyber font-bold text-xl">
-                      +{Math.floor(betAmount * 1.5)} 💰
+                      +{estimatedReward} 💰
                     </div>
                   </div>
                 </div>
+
+                {dynamicInfo && (
+                  <NeonCard className="mb-6 p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg">{DYNAMIC_TIER_EMOJIS[dynamicInfo.difficultyTier]}</span>
+                        <span
+                          className="font-cyber font-bold text-sm"
+                          style={{ color: DYNAMIC_TIER_COLORS[dynamicInfo.difficultyTier] }}
+                        >
+                          难度: {DYNAMIC_TIER_NAMES[dynamicInfo.difficultyTier]}
+                        </span>
+                      </div>
+                      <span className="text-xs text-gray-500 font-cyber">
+                        ×{dynamicInfo.difficultyMultiplier.toFixed(2)}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-4 text-xs text-gray-400">
+                      {player.currentWinStreak > 0 && (
+                        <div className="flex items-center gap-1">
+                          <Flame className="w-3 h-3 text-cyber-yellow" />
+                          <span className="text-cyber-yellow">
+                            连胜×{player.currentWinStreak}
+                          </span>
+                        </div>
+                      )}
+
+                      {dynamicInfo.rewardMultiplier > 1.0 && (
+                        <div className="flex items-center gap-1">
+                          <TrendingUp className="w-3 h-3 text-cyber-green" />
+                          <span className="text-cyber-green">
+                            奖励×{dynamicInfo.rewardMultiplier.toFixed(2)}
+                          </span>
+                        </div>
+                      )}
+
+                      {dynamicInfo.difficultyMultiplier > 1.1 && (
+                        <div className="flex items-center gap-1">
+                          <AlertTriangle className="w-3 h-3 text-cyber-red" />
+                          <span className="text-cyber-red">
+                            强敌来袭
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="mt-2 h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{
+                          width: `${Math.min(100, dynamicInfo.difficultyMultiplier * 50)}%`,
+                          background: `linear-gradient(to right, ${DYNAMIC_TIER_COLORS[dynamicInfo.difficultyTier]}, ${DYNAMIC_TIER_COLORS[dynamicInfo.difficultyTier]}88)`,
+                        }}
+                      />
+                    </div>
+                  </NeonCard>
+                )}
 
                 <div className="flex gap-4">
                   <NeonButton

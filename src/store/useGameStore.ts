@@ -22,6 +22,7 @@ import type {
   GachaMultiResult,
   StarLevel,
   BreakthroughTier,
+  DynamicDifficultyTier,
 } from '@/types';
 import { ANIMAL_TEMPLATES } from '@/data/animals';
 import { PART_TEMPLATES } from '@/data/parts';
@@ -42,6 +43,7 @@ import { getPartTemplate, rollPartQuality, QUALITY_REFINE_COST } from '@/data/pa
 import { getSkillTemplate } from '@/data/skills';
 import { MATERIAL_TEMPLATES, getMaterialTemplate } from '@/data/materials';
 import { getStarUpCost, getBreakthroughCost, getSkillSlotsForStar, getSkillLevelCapForBreakthrough, BATTLE_MATERIAL_DROPS } from '@/data/ascendConfig';
+import { computePlayerStrengthScore, computeLineupSignature, calculateDynamicDifficulty } from '@/data/opponents';
 
 interface GameState {
   player: {
@@ -112,6 +114,8 @@ interface GameState {
     battleRecord?: BattleRecord;
     isWin?: boolean;
     reward?: number;
+    effectiveDifficulty?: DynamicDifficultyTier;
+    rewardMultiplier?: number;
   };
 
   getAnimalById: (id: string) => Animal | undefined;
@@ -1344,7 +1348,23 @@ export const useGameStore = create<GameState>((set, get) => ({
       },
     }));
 
-    const result = simulateFullBattle(lineupAnimals, betAmount, state.lineupConfig);
+    const strengthScore = computePlayerStrengthScore(lineupAnimals);
+    const avgLevel = Math.floor(lineupAnimals.reduce((s, a) => s + a.level, 0) / lineupAnimals.length);
+
+    const currentSig = computeLineupSignature(state.lineup);
+    const recentSigs = [
+      currentSig,
+      ...state.battleHistory.slice(0, 9).map(r => computeLineupSignature(r.playerLineup)),
+    ];
+
+    const dynamicContext = calculateDynamicDifficulty(
+      strengthScore,
+      avgLevel,
+      state.player.currentWinStreak,
+      recentSigs,
+    );
+
+    const result = simulateFullBattle(lineupAnimals, betAmount, state.lineupConfig, dynamicContext);
 
     const battleRecord: BattleRecord = {
       id: generateBattleId(),
@@ -1391,7 +1411,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
 
     if (Math.random() * 100 < dropConfig.btMaterialChance && lineupAnimals.length > 0) {
-      const count = Math.floor(Math.random() * (dropConfig.btMaterialCount.max - dropConfig.btMaterialCount.min + 1)) + dropConfig.btMaterialCount.min;
+      const count = Math.floor(Math.random() * (dropConfig.btMaterialCount.max - dropConfig.btMaterialCount.min + 1)) + dropConfig.starMaterialCount.min;
       const elements = lineupAnimals.map(a => {
         const t = getAnimalTemplate(a.templateId);
         return t?.element;
@@ -1417,6 +1437,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       battleRecord,
       isWin: result.isWin,
       reward: result.reward,
+      effectiveDifficulty: result.effectiveDifficulty,
+      rewardMultiplier: result.rewardMultiplier,
     };
   },
 

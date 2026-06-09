@@ -20,7 +20,8 @@ import type {
 import { getAnimalTemplate } from '@/data/animals';
 import { getSkillTemplate } from '@/data/skills';
 import { getPartTemplate, QUALITY_MULTIPLIER, computeSetBonusStats, getActiveSetBonuses } from '@/data/parts';
-import { getRandomOpponent } from '@/data/opponents';
+import { getRandomOpponent, generateDynamicEnemyTeam } from '@/data/opponents';
+import type { DynamicOpponentContext, DynamicDifficultyTier } from '@/types';
 import { generateId } from '@/utils/id';
 import { randomInt, pickRandom, chance } from '@/utils/random';
 import { BATTLE_CONSTANTS, RARITY_MULTIPLIER, STATUS_EFFECT_CONFIG, ELEMENT_NAMES, ELEMENT_EMOJIS } from './constants';
@@ -250,7 +251,17 @@ export const createEnemyAnimal = (templateId: string, level: number, rarity: num
   };
 };
 
-export const generateEnemyTeam = (playerAvgLevel: number) => {
+export const generateEnemyTeam = (playerAvgLevel: number, dynamicContext?: DynamicOpponentContext) => {
+  if (dynamicContext) {
+    const result = generateDynamicEnemyTeam(dynamicContext);
+    return {
+      opponent: result.opponent,
+      animals: result.animals,
+      effectiveDifficulty: result.effectiveDifficulty,
+      rewardMultiplier: result.rewardMultiplier,
+    };
+  }
+
   const difficulty = playerAvgLevel < 3 ? 'easy' : playerAvgLevel < 6 ? 'normal' : 'hard';
   const opponent = getRandomOpponent(difficulty);
 
@@ -266,6 +277,8 @@ export const generateEnemyTeam = (playerAvgLevel: number) => {
   return {
     opponent,
     animals,
+    effectiveDifficulty: undefined as DynamicDifficultyTier | undefined,
+    rewardMultiplier: undefined as number | undefined,
   };
 };
 
@@ -1336,7 +1349,8 @@ export const resetComboCounts = (units: BattleUnit[]): void => {
 export const simulateFullBattle = (
   playerAnimals: Animal[],
   betAmount: number,
-  lineupConfig?: LineupConfig
+  lineupConfig?: LineupConfig,
+  dynamicContext?: DynamicOpponentContext
 ): {
   playerUnits: BattleUnit[];
   enemyUnits: BattleUnit[];
@@ -1347,12 +1361,14 @@ export const simulateFullBattle = (
   reward: number;
   opponentName: string;
   opponentAvatar: string;
+  effectiveDifficulty?: DynamicDifficultyTier;
+  rewardMultiplier?: number;
 } => {
   const playerAvgLevel = Math.floor(
     playerAnimals.reduce((sum, a) => sum + a.level, 0) / playerAnimals.length
   );
 
-  const { opponent, animals: enemyAnimals } = generateEnemyTeam(playerAvgLevel);
+  const { opponent, animals: enemyAnimals, effectiveDifficulty, rewardMultiplier } = generateEnemyTeam(playerAvgLevel, dynamicContext);
 
   const config = lineupConfig || { animals: [], actionPriority: 'speedFirst' as ActionPriority };
 
@@ -1556,7 +1572,9 @@ export const simulateFullBattle = (
   }
 
   const isWin = isTeamAlive(playerUnits) && !isTeamAlive(enemyUnits);
-  const reward = isWin ? Math.floor(betAmount * opponent.betMultiplier) : 0;
+  const baseRewardMultiplier = opponent.betMultiplier;
+  const effectiveRewardMultiplier = rewardMultiplier || baseRewardMultiplier;
+  const reward = isWin ? Math.floor(betAmount * effectiveRewardMultiplier) : 0;
 
   fullBattleLog.push({
     timestamp: Date.now(),
@@ -1578,5 +1596,7 @@ export const simulateFullBattle = (
     reward,
     opponentName: opponent.name,
     opponentAvatar: opponent.avatar,
+    effectiveDifficulty,
+    rewardMultiplier: effectiveRewardMultiplier,
   };
 };
