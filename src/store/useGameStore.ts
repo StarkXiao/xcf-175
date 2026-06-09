@@ -91,6 +91,7 @@ interface GameState {
 
   equipSkill: (animalId: string, skillId: string) => boolean;
   unequipSkill: (animalId: string, index: number) => void;
+  upgradeSkill: (animalId: string, skillIndex: number) => boolean;
 
   addCoins: (amount: number) => void;
   spendCoins: (amount: number) => boolean;
@@ -688,6 +689,36 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
 
     get().saveGame();
+  },
+
+  upgradeSkill: (animalId: string, skillIndex: number): boolean => {
+    const state = get();
+    const animal = state.ownedAnimals.find(a => a.id === animalId);
+    if (!animal) return false;
+    if (skillIndex < 0 || skillIndex >= animal.skills.length) return false;
+
+    const equipped = animal.skills[skillIndex];
+    const skillLevelCap = getSkillLevelCapForBreakthrough(animal.breakthroughTier);
+    if (equipped.level >= skillLevelCap) return false;
+
+    const cost = equipped.level * 50;
+    if (state.player.coins < cost) return false;
+
+    set(state => ({
+      player: { ...state.player, coins: state.player.coins - cost },
+      ownedAnimals: state.ownedAnimals.map(a =>
+        a.id === animalId
+          ? {
+              ...a,
+              skills: a.skills.map((s, i) =>
+                i === skillIndex ? { ...s, level: s.level + 1 } : s
+              ),
+            }
+          : a
+      ),
+    }));
+    get().saveGame();
+    return true;
   },
 
   addCoins: (amount: number) => {

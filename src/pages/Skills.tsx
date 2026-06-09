@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
-import { BookOpen, Plus, ArrowLeft, X } from 'lucide-react';
+import { BookOpen, Plus, ArrowLeft, X, ChevronUp, Lock } from 'lucide-react';
 import { NeonButton } from '@/components/NeonButton';
 import { NeonCard } from '@/components/NeonCard';
 import { AnimalCard } from '@/components/AnimalCard';
@@ -9,13 +9,14 @@ import { Empty } from '@/components/Empty';
 import { useGameStore } from '@/store/useGameStore';
 import type { Animal } from '@/types';
 import { getSkillTemplate } from '@/data/skills';
-import { BATTLE_CONSTANTS, ELEMENT_EMOJIS, ELEMENT_COLORS, ELEMENT_NAMES, STATUS_EFFECT_CONFIG } from '@/engine/constants';
+import { getSkillSlotsForStar, getSkillLevelCapForBreakthrough } from '@/data/ascendConfig';
+import { ELEMENT_EMOJIS, ELEMENT_COLORS, ELEMENT_NAMES, STATUS_EFFECT_CONFIG, STAR_LEVEL_NAMES, BREAKTHROUGH_TIER_NAMES } from '@/engine/constants';
 
-const MAX_SKILLS_PER_ANIMAL = BATTLE_CONSTANTS.MAX_SKILLS_PER_ANIMAL;
+const SKILL_UPGRADE_COST = (level: number) => level * 50;
 
 export default function Skills() {
   const navigate = useNavigate();
-  const { ownedAnimals, ownedSkills, equipSkill, unequipSkill } = useGameStore();
+  const { ownedAnimals, ownedSkills, equipSkill, unequipSkill, upgradeSkill, player } = useGameStore();
 
   const [selectedAnimal, setSelectedAnimal] = useState<Animal | null>(null);
   const [showSkillPicker, setShowSkillPicker] = useState(false);
@@ -29,13 +30,16 @@ export default function Skills() {
     }
   }, [ownedAnimals, selectedAnimal]);
 
+  const maxSkillSlots = selectedAnimal ? getSkillSlotsForStar(selectedAnimal.starLevel) : 1;
+  const skillLevelCap = selectedAnimal ? getSkillLevelCapForBreakthrough(selectedAnimal.breakthroughTier) : 1;
+
   const availableSkills = ownedSkills.filter(
     skill => !selectedAnimal?.skills.some(s => s.skillId === skill.id)
   );
 
   const handleEquipSkill = (skillId: string) => {
     if (!selectedAnimal) return;
-    if (selectedAnimal.skills.length >= MAX_SKILLS_PER_ANIMAL) return;
+    if (selectedAnimal.skills.length >= maxSkillSlots) return;
     equipSkill(selectedAnimal.id, skillId);
     setShowSkillPicker(false);
     setSelectedAnimal(prev => prev ? {
@@ -50,6 +54,20 @@ export default function Skills() {
     setSelectedAnimal(prev => prev ? {
       ...prev,
       skills: prev.skills.filter((_, i) => i !== index)
+    } : null);
+  };
+
+  const handleUpgradeSkill = (index: number) => {
+    if (!selectedAnimal) return;
+    const equipped = selectedAnimal.skills[index];
+    if (!equipped) return;
+    const cost = SKILL_UPGRADE_COST(equipped.level);
+    if (player.coins < cost) return;
+    if (equipped.level >= skillLevelCap) return;
+    upgradeSkill(selectedAnimal.id, index);
+    setSelectedAnimal(prev => prev ? {
+      ...prev,
+      skills: prev.skills.map((s, i) => i === index ? { ...s, level: s.level + 1 } : s)
     } : null);
   };
 
@@ -89,18 +107,27 @@ export default function Skills() {
               </div>
 
               <div>
-                <h2 className="font-cyber font-bold text-lg mb-4 text-gray-300 flex items-center gap-2">
+                <h2 className="font-cyber font-bold text-lg mb-2 text-gray-300 flex items-center gap-2">
                   <BookOpen className="w-5 h-5 text-cyber-pink" />
                   已装备技能
                   <span className="text-sm text-gray-500 ml-2">
-                    ({selectedAnimal.skills.length}/{MAX_SKILLS_PER_ANIMAL})
+                    ({selectedAnimal.skills.length}/{maxSkillSlots})
                   </span>
                 </h2>
+                <div className="flex items-center gap-3 mb-4 text-xs">
+                  <span className="text-cyber-yellow">⭐{STAR_LEVEL_NAMES[selectedAnimal.starLevel]}</span>
+                  <span className="text-cyber-purple">🔮{BREAKTHROUGH_TIER_NAMES[selectedAnimal.breakthroughTier]}</span>
+                  <span className="text-gray-400">技能槽: {maxSkillSlots}</span>
+                  <span className="text-gray-400">等级上限: Lv.{skillLevelCap}</span>
+                </div>
 
                 <div className="space-y-3">
                   {selectedAnimal.skills.map((equipped, index) => {
                     const template = getSkillTemplate(equipped.skillId);
                     if (!template) return null;
+                    const isMaxLevel = equipped.level >= skillLevelCap;
+                    const upgradeCost = SKILL_UPGRADE_COST(equipped.level);
+                    const canUpgrade = !isMaxLevel && player.coins >= upgradeCost;
                     return (
                       <NeonCard key={index} className="p-4">
                         <div className="flex items-center gap-4">
@@ -110,8 +137,8 @@ export default function Skills() {
                               <span className="font-cyber font-bold text-white">
                                 {template.name}
                               </span>
-                              <span className="text-xs px-2 py-0.5 bg-cyber-pink/20 text-cyber-pink rounded">
-                                Lv.{equipped.level}
+                              <span className={`text-xs px-2 py-0.5 rounded font-bold ${isMaxLevel ? 'bg-cyber-yellow/20 text-cyber-yellow' : 'bg-cyber-pink/20 text-cyber-pink'}`}>
+                                Lv.{equipped.level}{isMaxLevel ? ' MAX' : `/${skillLevelCap}`}
                               </span>
                               {template.element && (
                                 <span
@@ -138,20 +165,45 @@ export default function Skills() {
                                 </span>
                               )}
                             </div>
+                            {!isMaxLevel && (
+                              <div className="mt-2">
+                                <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
+                                  <span>等级进度</span>
+                                  <span>{upgradeCost} 💰</span>
+                                </div>
+                                <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full bg-gradient-to-r from-cyber-pink to-cyber-purple rounded-full transition-all duration-300"
+                                    style={{ width: `${(equipped.level / skillLevelCap) * 100}%` }}
+                                  />
+                                </div>
+                              </div>
+                            )}
                           </div>
-                          <NeonButton
-                            size="sm"
-                            variant="red"
-                            onClick={() => handleUnequipSkill(index)}
-                          >
-                            <X className="w-4 h-4" />
-                          </NeonButton>
+                          <div className="flex flex-col gap-2">
+                            <NeonButton
+                              size="sm"
+                              variant={canUpgrade ? 'cyan' : 'ghost'}
+                              disabled={!canUpgrade}
+                              onClick={() => handleUpgradeSkill(index)}
+                              title={isMaxLevel ? `需突破至更高阶解锁 (当前上限Lv.${skillLevelCap})` : `升级需 ${upgradeCost} 💰`}
+                            >
+                              {isMaxLevel ? <Lock className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+                            </NeonButton>
+                            <NeonButton
+                              size="sm"
+                              variant="red"
+                              onClick={() => handleUnequipSkill(index)}
+                            >
+                              <X className="w-4 h-4" />
+                            </NeonButton>
+                          </div>
                         </div>
                       </NeonCard>
                     );
                   })}
 
-                  {Array.from({ length: MAX_SKILLS_PER_ANIMAL - selectedAnimal.skills.length }).map((_, i) => (
+                  {Array.from({ length: maxSkillSlots - selectedAnimal.skills.length }).map((_, i) => (
                     <div
                       key={`empty-${i}`}
                       className="border-2 border-dashed border-gray-700 rounded-xl p-6 flex items-center justify-center gap-3 cursor-pointer hover:border-cyber-pink/50 transition-colors"

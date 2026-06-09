@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { Swords, Users, Zap, ShoppingBag, Home, Coins, Star } from 'lucide-react';
+import { Swords, Users, Zap, ShoppingBag, Home, Coins, Star, BookOpen } from 'lucide-react';
 import { useGameStore } from '@/store/useGameStore';
 import { formatNumber } from '@/utils/format';
 
@@ -11,6 +11,7 @@ export const NavBar = () => {
     { to: '/lineup', icon: Users, label: '阵容' },
     { to: '/skills', icon: Zap, label: '技能' },
     { to: '/ascend', icon: Star, label: '升星' },
+    { to: '/codex', icon: BookOpen, label: '图鉴' },
     { to: '/battle', icon: Swords, label: '战斗' },
     { to: '/shop', icon: ShoppingBag, label: '商店' },
   ];

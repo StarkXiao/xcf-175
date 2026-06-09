@@ -7,7 +7,7 @@ import { BATTLE_CONSTANTS } from '@/engine/constants';
 
 export default function Home() {
   const navigate = useNavigate();
-  const { player, lineup, ownedAnimals, startBattle, battleHistory } = useGameStore();
+  const { lineup, ownedAnimals, startBattle, battleHistory, codex } = useGameStore();
   const canBattle = lineup.length > 0 && lineup.length <= BATTLE_CONSTANTS.MAX_TEAM_SIZE;
   const lastBattle = battleHistory[battleHistory.length - 1];
 
@@ -140,6 +140,13 @@ export default function Home() {
               desc: '消耗材料提升星级与突破等阶',
               action: () => navigate('/ascend'),
               color: 'yellow' as const,
+            },
+            {
+              icon: BookOpen,
+              title: `图鉴 (${codex.filter(c => c.isUnlocked).length})`,
+              desc: '查看收集进度与属性加成',
+              action: () => navigate('/codex'),
+              color: 'cyan' as const,
             },
             {
               icon: Swords,

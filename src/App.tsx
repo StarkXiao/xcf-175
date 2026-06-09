@@ -7,6 +7,7 @@ import Battle from '@/pages/Battle';
 import Replay from '@/pages/Replay';
 import Shop from '@/pages/Shop';
 import Ascend from '@/pages/Ascend';
+import Codex from '@/pages/Codex';
 import { useGameStore } from '@/store/useGameStore';
 import { useEffect } from 'react';
 
@@ -54,6 +55,7 @@ function App() {
             <Route path="/replay/:id" element={<Replay />} />
             <Route path="/shop" element={<Shop />} />
             <Route path="/ascend" element={<Ascend />} />
+            <Route path="/codex" element={<Codex />} />
           </Routes>
           <NavBar />
         </div>
