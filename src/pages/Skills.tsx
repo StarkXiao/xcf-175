@@ -34,27 +34,21 @@ export default function Skills() {
   const skillLevelCap = selectedAnimal ? getSkillLevelCapForBreakthrough(selectedAnimal.breakthroughTier) : 1;
 
   const availableSkills = ownedSkills.filter(
-    skill => !selectedAnimal?.skills.some(s => s.skillId === skill.id)
+    skill => !selectedAnimal?.skills.some(s => s.skillId === skill.templateId)
   );
 
   const handleEquipSkill = (skillId: string) => {
     if (!selectedAnimal) return;
     if (selectedAnimal.skills.length >= maxSkillSlots) return;
-    equipSkill(selectedAnimal.id, skillId);
-    setShowSkillPicker(false);
-    setSelectedAnimal(prev => prev ? {
-      ...prev,
-      skills: [...prev.skills, { skillId, level: 1 }]
-    } : null);
+    const ok = equipSkill(selectedAnimal.id, skillId);
+    if (ok) {
+      setShowSkillPicker(false);
+    }
   };
 
   const handleUnequipSkill = (index: number) => {
     if (!selectedAnimal) return;
     unequipSkill(selectedAnimal.id, index);
-    setSelectedAnimal(prev => prev ? {
-      ...prev,
-      skills: prev.skills.filter((_, i) => i !== index)
-    } : null);
   };
 
   const handleUpgradeSkill = (index: number) => {
@@ -65,10 +59,6 @@ export default function Skills() {
     if (player.coins < cost) return;
     if (equipped.level >= skillLevelCap) return;
     upgradeSkill(selectedAnimal.id, index);
-    setSelectedAnimal(prev => prev ? {
-      ...prev,
-      skills: prev.skills.map((s, i) => i === index ? { ...s, level: s.level + 1 } : s)
-    } : null);
   };
 
   return (
