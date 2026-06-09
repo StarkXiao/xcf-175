@@ -60,6 +60,7 @@ export default function Shop() {
 
   const handleGacha = (type: GachaType, count: number = 1) => {
     if (isAnimating) return;
+    if (type === 'limited' && limitedPool.endsAt && Date.now() > limitedPool.endsAt) return;
 
     const { results, totalCost } = gachaMulti(type, count);
     if (results.length === 0) return;
@@ -73,6 +74,8 @@ export default function Shop() {
       setIsAnimating(false);
     }, 800);
   };
+
+  const isPoolExpired = activeTab === 'limited' && !!limitedPool.endsAt && Date.now() > limitedPool.endsAt;
 
   const tabs = [
     { type: 'animal' as GachaType, label: '动物', icon: Sparkles, cost: GACHA_COST.animal, currency: 'coins' as const },
@@ -167,9 +170,21 @@ export default function Shop() {
         return (
           <div className="space-y-4">
             {countdown && (
-              <div className="flex items-center gap-2 px-4 py-2 bg-cyber-yellow/10 border border-cyber-yellow/30 rounded-lg">
-                <Clock className="w-4 h-4 text-cyber-yellow" />
-                <span className="text-sm font-cyber text-cyber-yellow">限定池剩余时间: {countdown}</span>
+              <div className={cn(
+                'flex items-center gap-2 px-4 py-2 border rounded-lg',
+                countdown === '已结束'
+                  ? 'bg-red-900/20 border-red-500/30'
+                  : 'bg-cyber-yellow/10 border-cyber-yellow/30'
+              )}>
+                <Clock className={cn('w-4 h-4', countdown === '已结束' ? 'text-red-400' : 'text-cyber-yellow')} />
+                <span className={cn('text-sm font-cyber', countdown === '已结束' ? 'text-red-400' : 'text-cyber-yellow')}>
+                  {countdown === '已结束' ? '限定池已结束' : `限定池剩余时间: ${countdown}`}
+                </span>
+              </div>
+            )}
+            {isPoolExpired && (
+              <div className="p-4 bg-red-900/20 border border-red-500/30 rounded-lg text-center">
+                <p className="text-red-400 font-cyber font-bold">⚠️ 限定池已过期，无法继续抽取</p>
               </div>
             )}
             <NeonCard variant="yellow" className="border-cyber-yellow/30">
@@ -406,7 +421,7 @@ export default function Shop() {
                     e.stopPropagation();
                     handleGacha(tab.type, 1);
                   }}
-                  disabled={player[tab.currency] < tab.cost || isAnimating}
+                  disabled={player[tab.currency] < tab.cost || isAnimating || (tab.type === 'limited' && !!limitedPool.endsAt && Date.now() > limitedPool.endsAt)}
                   className="flex-1"
                 >
                   <Sparkles className="w-4 h-4 mr-1" />
@@ -419,7 +434,7 @@ export default function Shop() {
                     e.stopPropagation();
                     handleGacha(tab.type, 10);
                   }}
-                  disabled={player[tab.currency] < tab.cost * 10 || isAnimating}
+                  disabled={player[tab.currency] < tab.cost * 10 || isAnimating || (tab.type === 'limited' && !!limitedPool.endsAt && Date.now() > limitedPool.endsAt)}
                   className="flex-1"
                 >
                   <Sparkles className="w-4 h-4 mr-1" />
@@ -651,7 +666,7 @@ export default function Shop() {
                 disabled={
                   (activeTab === 'limited'
                     ? player.gems < GACHA_COST.limited * gachaResults.length
-                    : player.coins < GACHA_COST[activeTab] * gachaResults.length) || isAnimating
+                    : player.coins < GACHA_COST[activeTab] * gachaResults.length) || isAnimating || isPoolExpired
                 }
               >
                 <Sparkles className="w-4 h-4 mr-2" />

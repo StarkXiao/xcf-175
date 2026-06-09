@@ -188,6 +188,42 @@ const rollRarityWithPity = (
   return pickRandomWeighted(rarities, weights);
 };
 
+const pickSkillTemplate = (targetRarity: Rarity): { template: typeof SKILL_TEMPLATES[number]; actualRarity: Rarity } => {
+  let pool = SKILL_TEMPLATES.filter(s => s.rarity === targetRarity);
+  if (pool.length === 0) {
+    pool = SKILL_TEMPLATES.filter(s => s.rarity <= targetRarity);
+  }
+  if (pool.length === 0) {
+    pool = SKILL_TEMPLATES;
+  }
+  const template = pickRandom(pool);
+  return { template, actualRarity: template.rarity };
+};
+
+const pickAnimalTemplate = (targetRarity: Rarity): { template: typeof ANIMAL_TEMPLATES[number]; actualRarity: Rarity } => {
+  let pool = ANIMAL_TEMPLATES.filter(t => t.rarity === targetRarity);
+  if (pool.length === 0) {
+    pool = ANIMAL_TEMPLATES.filter(t => t.rarity <= targetRarity);
+  }
+  if (pool.length === 0) {
+    pool = ANIMAL_TEMPLATES;
+  }
+  const template = pickRandom(pool);
+  return { template, actualRarity: template.rarity };
+};
+
+const pickPartTemplate = (targetRarity: Rarity): { template: typeof PART_TEMPLATES[number]; actualRarity: Rarity } => {
+  let pool = PART_TEMPLATES.filter(p => p.rarity === targetRarity);
+  if (pool.length === 0) {
+    pool = PART_TEMPLATES.filter(p => p.rarity <= targetRarity);
+  }
+  if (pool.length === 0) {
+    pool = PART_TEMPLATES;
+  }
+  const template = pickRandom(pool);
+  return { template, actualRarity: template.rarity };
+};
+
 const recordGacha = (
   poolType: GachaPoolType,
   itemType: 'animal' | 'part' | 'skill',
@@ -664,19 +700,17 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
 
     const pity = state.pityState.animal;
-    const rarity = rollRarityWithPity(GACHA_RATES.animal, pity.pullsSinceR4, pity.pullsSinceR5);
-    const isPity = rarity >= 4 && (pity.pullsSinceR4 >= PITY_CONFIG.hardPityR4 - 1 || pity.pullsSinceR5 >= PITY_CONFIG.hardPityR5 - 1);
-
-    const pool = ANIMAL_TEMPLATES.filter(t => t.rarity <= rarity);
-    const template = pickRandom(pool);
-    const animal = createAnimalFromTemplate(template.id, rarity);
+    const rolledRarity = rollRarityWithPity(GACHA_RATES.animal, pity.pullsSinceR4, pity.pullsSinceR5);
+    const { template, actualRarity } = pickAnimalTemplate(rolledRarity);
+    const isPity = actualRarity >= 4 && (pity.pullsSinceR4 >= PITY_CONFIG.hardPityR4 - 1 || pity.pullsSinceR5 >= PITY_CONFIG.hardPityR5 - 1);
+    const animal = createAnimalFromTemplate(template.id, actualRarity);
     const isNew = !state.ownedAnimals.some(a => a.templateId === template.id);
 
-    const gachaRecord = recordGacha('animal', 'animal', template.id, template.name, template.emoji, rarity, isNew);
+    const gachaRecord = recordGacha('animal', 'animal', template.id, template.name, template.emoji, actualRarity, isNew);
 
     const newPity = {
-      pullsSinceR4: rarity >= 4 ? 0 : pity.pullsSinceR4 + 1,
-      pullsSinceR5: rarity >= 5 ? 0 : pity.pullsSinceR5 + 1,
+      pullsSinceR4: rolledRarity >= 4 ? 0 : pity.pullsSinceR4 + 1,
+      pullsSinceR5: rolledRarity >= 5 ? 0 : pity.pullsSinceR5 + 1,
     };
 
     set(state => ({
@@ -696,25 +730,17 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
 
     const pity = state.pityState.part;
-    const rarity = rollRarityWithPity(GACHA_RATES.part, pity.pullsSinceR4, pity.pullsSinceR5);
-    const isPity = rarity >= 4 && (pity.pullsSinceR4 >= PITY_CONFIG.hardPityR4 - 1 || pity.pullsSinceR5 >= PITY_CONFIG.hardPityR5 - 1);
-
-    let pool = PART_TEMPLATES.filter(p => p.rarity === rarity);
-    if (pool.length === 0) {
-      pool = PART_TEMPLATES.filter(p => p.rarity <= rarity);
-      if (pool.length === 0) {
-        pool = PART_TEMPLATES;
-      }
-    }
-    const template = pickRandom(pool);
+    const rolledRarity = rollRarityWithPity(GACHA_RATES.part, pity.pullsSinceR4, pity.pullsSinceR5);
+    const { template, actualRarity } = pickPartTemplate(rolledRarity);
+    const isPity = actualRarity >= 4 && (pity.pullsSinceR4 >= PITY_CONFIG.hardPityR4 - 1 || pity.pullsSinceR5 >= PITY_CONFIG.hardPityR5 - 1);
     const part: Part = { ...template, id: generateId('part'), templateId: template.id };
     const isNew = !state.ownedParts.some(p => p.templateId === template.id);
 
-    const gachaRecord = recordGacha('part', 'part', template.id, template.name, template.emoji, rarity, isNew);
+    const gachaRecord = recordGacha('part', 'part', template.id, template.name, template.emoji, actualRarity, isNew);
 
     const newPity = {
-      pullsSinceR4: rarity >= 4 ? 0 : pity.pullsSinceR4 + 1,
-      pullsSinceR5: rarity >= 5 ? 0 : pity.pullsSinceR5 + 1,
+      pullsSinceR4: rolledRarity >= 4 ? 0 : pity.pullsSinceR4 + 1,
+      pullsSinceR5: rolledRarity >= 5 ? 0 : pity.pullsSinceR5 + 1,
     };
 
     set(state => ({
@@ -734,43 +760,17 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
 
     const pity = state.pityState.skill;
-    const rarity = rollRarityWithPity(GACHA_RATES.skill, pity.pullsSinceR4, pity.pullsSinceR5);
-    const isPity = rarity >= 4 && (pity.pullsSinceR4 >= PITY_CONFIG.hardPityR4 - 1 || pity.pullsSinceR5 >= PITY_CONFIG.hardPityR5 - 1);
-
-    const pool = SKILL_TEMPLATES.filter(s => {
-      if (s.type === 'special') return rarity >= 3;
-      if (s.type === 'buff' || s.type === 'debuff') return rarity >= 2;
-      return true;
-    });
-    if (pool.length === 0) {
-      const template = pickRandom(SKILL_TEMPLATES);
-      const skill: Skill = { ...template, id: generateId('skill'), templateId: template.id };
-      const gachaRecord = recordGacha('skill', 'skill', template.id, template.name, template.emoji, rarity, true);
-
-      const newPity = {
-        pullsSinceR4: rarity >= 4 ? 0 : pity.pullsSinceR4 + 1,
-        pullsSinceR5: rarity >= 5 ? 0 : pity.pullsSinceR5 + 1,
-      };
-
-      set(state => ({
-        player: { ...state.player, coins: state.player.coins - GACHA_COSTS.skill },
-        ownedSkills: [...state.ownedSkills, skill],
-        pityState: { ...state.pityState, skill: newPity },
-        gachaRecords: [...state.gachaRecords, gachaRecord],
-      }));
-      get().saveGame();
-      return { skill, isNew: true, isPity };
-    }
-
-    const template = pickRandom(pool);
+    const rolledRarity = rollRarityWithPity(GACHA_RATES.skill, pity.pullsSinceR4, pity.pullsSinceR5);
+    const { template, actualRarity } = pickSkillTemplate(rolledRarity);
+    const isPity = actualRarity >= 4 && (pity.pullsSinceR4 >= PITY_CONFIG.hardPityR4 - 1 || pity.pullsSinceR5 >= PITY_CONFIG.hardPityR5 - 1);
     const skill: Skill = { ...template, id: generateId('skill'), templateId: template.id };
     const isNew = !state.ownedSkills.some(s => s.templateId === template.id);
 
-    const gachaRecord = recordGacha('skill', 'skill', template.id, template.name, template.emoji, rarity, isNew);
+    const gachaRecord = recordGacha('skill', 'skill', template.id, template.name, template.emoji, actualRarity, isNew);
 
     const newPity = {
-      pullsSinceR4: rarity >= 4 ? 0 : pity.pullsSinceR4 + 1,
-      pullsSinceR5: rarity >= 5 ? 0 : pity.pullsSinceR5 + 1,
+      pullsSinceR4: rolledRarity >= 4 ? 0 : pity.pullsSinceR4 + 1,
+      pullsSinceR5: rolledRarity >= 5 ? 0 : pity.pullsSinceR5 + 1,
     };
 
     set(state => ({
@@ -789,13 +789,16 @@ export const useGameStore = create<GameState>((set, get) => ({
       throw new Error('Not enough gems');
     }
 
+    if (state.limitedPool.endsAt && Date.now() > state.limitedPool.endsAt) {
+      throw new Error('Limited pool has ended');
+    }
+
     const pity = state.pityState.limited;
-    const rarity = rollRarityWithPity(GACHA_RATES.limited, pity.pullsSinceR4, pity.pullsSinceR5, true);
-    const isPity = rarity >= 4 && (pity.pullsSinceR4 >= PITY_CONFIG.limitedHardPityR4 - 1 || pity.pullsSinceR5 >= PITY_CONFIG.limitedHardPityR5 - 1);
+    const rolledRarity = rollRarityWithPity(GACHA_RATES.limited, pity.pullsSinceR4, pity.pullsSinceR5, true);
 
     const lp = state.limitedPool;
-    const isFeaturedR5 = rarity === 5 && (pity.guaranteedFeatured || Math.random() * 100 < PITY_CONFIG.featuredR5Rate);
-    const isFeaturedR4 = rarity === 4 && Math.random() * 100 < PITY_CONFIG.featuredR4Rate;
+    const isFeaturedR5 = rolledRarity === 5 && (pity.guaranteedFeatured || Math.random() * 100 < PITY_CONFIG.featuredR5Rate);
+    const isFeaturedR4 = rolledRarity === 4 && Math.random() * 100 < PITY_CONFIG.featuredR4Rate;
     const isFeatured = isFeaturedR5 || isFeaturedR4;
 
     let itemType: 'animal' | 'part' | 'skill';
@@ -803,6 +806,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     let templateId: string;
     let itemName: string;
     let itemEmoji: string;
+    let actualRarity: Rarity;
 
     if (isFeaturedR5 || isFeaturedR4) {
       const allFeatured = [
@@ -810,16 +814,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         ...lp.featuredPartTemplateIds.map(id => ({ type: 'part' as const, id })),
         ...lp.featuredSkillTemplateIds.map(id => ({ type: 'skill' as const, id })),
       ].filter(fi => {
-        if (fi.type === 'animal') {
-          const t = getAnimalTemplate(fi.id);
-          return t && t.rarity <= rarity;
-        }
-        if (fi.type === 'part') {
-          const t = getPartTemplate(fi.id);
-          return t && t.rarity <= rarity;
-        }
-        const t = getSkillTemplate(fi.id);
-        return t && t.rarity <= rarity;
+        if (fi.type === 'animal') { const t = getAnimalTemplate(fi.id); return t && t.rarity <= rolledRarity; }
+        if (fi.type === 'part') { const t = getPartTemplate(fi.id); return t && t.rarity <= rolledRarity; }
+        const t = getSkillTemplate(fi.id); return t && t.rarity <= rolledRarity;
       });
 
       if (allFeatured.length > 0) {
@@ -829,17 +826,20 @@ export const useGameStore = create<GameState>((set, get) => ({
 
         if (itemType === 'animal') {
           const template = getAnimalTemplate(templateId)!;
-          item = createAnimalFromTemplate(templateId, rarity);
+          actualRarity = template.rarity;
+          item = createAnimalFromTemplate(templateId, actualRarity);
           itemName = template.name;
           itemEmoji = template.emoji;
         } else if (itemType === 'part') {
           const template = getPartTemplate(templateId)!;
-          item = { ...template, id: generateId('part'), templateId: template.id, rarity };
+          actualRarity = template.rarity;
+          item = { ...template, id: generateId('part'), templateId: template.id };
           itemName = template.name;
           itemEmoji = template.emoji;
         } else {
           const template = getSkillTemplate(templateId)!;
-          item = { ...template, id: generateId('skill'), templateId: template.id, rarity };
+          actualRarity = template.rarity;
+          item = { ...template, id: generateId('skill'), templateId: template.id };
           itemName = template.name;
           itemEmoji = template.emoji;
         }
@@ -847,26 +847,26 @@ export const useGameStore = create<GameState>((set, get) => ({
         const roll = Math.random();
         if (roll < 0.34) {
           itemType = 'animal';
-          const pool = ANIMAL_TEMPLATES.filter(t => t.rarity <= rarity);
-          const template = pickRandom(pool);
+          const { template, actualRarity: aR } = pickAnimalTemplate(rolledRarity);
+          actualRarity = aR;
           templateId = template.id;
-          item = createAnimalFromTemplate(templateId, rarity);
+          item = createAnimalFromTemplate(templateId, actualRarity);
           itemName = template.name;
           itemEmoji = template.emoji;
         } else if (roll < 0.67) {
           itemType = 'part';
-          const pool = PART_TEMPLATES.filter(p => p.rarity <= rarity);
-          const template = pickRandom(pool);
+          const { template, actualRarity: aR } = pickPartTemplate(rolledRarity);
+          actualRarity = aR;
           templateId = template.id;
-          item = { ...template, id: generateId('part'), templateId: template.id, rarity };
+          item = { ...template, id: generateId('part'), templateId: template.id };
           itemName = template.name;
           itemEmoji = template.emoji;
         } else {
           itemType = 'skill';
-          const pool = SKILL_TEMPLATES.filter(s => s.rarity <= rarity);
-          const template = pickRandom(pool);
+          const { template, actualRarity: aR } = pickSkillTemplate(rolledRarity);
+          actualRarity = aR;
           templateId = template.id;
-          item = { ...template, id: generateId('skill'), templateId: template.id, rarity };
+          item = { ...template, id: generateId('skill'), templateId: template.id };
           itemName = template.name;
           itemEmoji = template.emoji;
         }
@@ -875,47 +875,48 @@ export const useGameStore = create<GameState>((set, get) => ({
       const roll = Math.random();
       if (roll < 0.34) {
         itemType = 'animal';
-        const pool = ANIMAL_TEMPLATES.filter(t => t.rarity <= rarity);
-        const template = pickRandom(pool);
+        const { template, actualRarity: aR } = pickAnimalTemplate(rolledRarity);
+        actualRarity = aR;
         templateId = template.id;
-        item = createAnimalFromTemplate(templateId, rarity);
+        item = createAnimalFromTemplate(templateId, actualRarity);
         itemName = template.name;
         itemEmoji = template.emoji;
       } else if (roll < 0.67) {
         itemType = 'part';
-        const pool = PART_TEMPLATES.filter(p => p.rarity <= rarity);
-        const template = pickRandom(pool);
+        const { template, actualRarity: aR } = pickPartTemplate(rolledRarity);
+        actualRarity = aR;
         templateId = template.id;
-        item = { ...template, id: generateId('part'), templateId: template.id, rarity };
+        item = { ...template, id: generateId('part'), templateId: template.id };
         itemName = template.name;
         itemEmoji = template.emoji;
       } else {
         itemType = 'skill';
-        const pool = SKILL_TEMPLATES.filter(s => s.rarity <= rarity);
-        const template = pickRandom(pool);
+        const { template, actualRarity: aR } = pickSkillTemplate(rolledRarity);
+        actualRarity = aR;
         templateId = template.id;
-        item = { ...template, id: generateId('skill'), templateId: template.id, rarity };
+        item = { ...template, id: generateId('skill'), templateId: template.id };
         itemName = template.name;
         itemEmoji = template.emoji;
       }
     }
 
+    const isPity = actualRarity >= 4 && (pity.pullsSinceR4 >= PITY_CONFIG.limitedHardPityR4 - 1 || pity.pullsSinceR5 >= PITY_CONFIG.limitedHardPityR5 - 1);
     const isNew = itemType === 'animal'
       ? !state.ownedAnimals.some(a => a.templateId === templateId)
       : itemType === 'part'
         ? !state.ownedParts.some(p => p.templateId === templateId)
         : !state.ownedSkills.some(s => s.templateId === templateId);
 
-    const gachaRecord = recordGacha('limited', itemType, templateId, itemName, itemEmoji, rarity, isNew);
+    const gachaRecord = recordGacha('limited', itemType, templateId, itemName, itemEmoji, actualRarity, isNew);
 
     let newGuaranteedFeatured = pity.guaranteedFeatured;
-    if (rarity === 5) {
+    if (rolledRarity === 5) {
       newGuaranteedFeatured = !isFeaturedR5;
     }
 
     const newLimitedPity = {
-      pullsSinceR4: rarity >= 4 ? 0 : pity.pullsSinceR4 + 1,
-      pullsSinceR5: rarity >= 5 ? 0 : pity.pullsSinceR5 + 1,
+      pullsSinceR4: rolledRarity >= 4 ? 0 : pity.pullsSinceR4 + 1,
+      pullsSinceR5: rolledRarity >= 5 ? 0 : pity.pullsSinceR5 + 1,
       guaranteedFeatured: newGuaranteedFeatured,
     };
 
@@ -940,6 +941,9 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   gachaMulti: (poolType: GachaPoolType, count: number) => {
     const state = get();
+    if (poolType === 'limited' && state.limitedPool.endsAt && Date.now() > state.limitedPool.endsAt) {
+      return { results: [] as GachaMultiResult[], totalCost: 0 };
+    }
     const costPer = poolType === 'limited' ? GACHA_COSTS.limited : GACHA_COSTS[poolType];
     const currency = poolType === 'limited' ? 'gems' as const : 'coins' as const;
     const totalCost = costPer * count;
@@ -966,19 +970,18 @@ export const useGameStore = create<GameState>((set, get) => ({
       switch (poolType) {
         case 'animal': {
           const pity = pityState.animal;
-          const rarity = rollRarityWithPity(GACHA_RATES.animal, pity.pullsSinceR4, pity.pullsSinceR5);
-          const isPity = rarity >= 4 && (pity.pullsSinceR4 >= PITY_CONFIG.hardPityR4 - 1 || pity.pullsSinceR5 >= PITY_CONFIG.hardPityR5 - 1);
-          const pool = ANIMAL_TEMPLATES.filter(t => t.rarity <= rarity);
-          const template = pickRandom(pool);
-          const animal = createAnimalFromTemplate(template.id, rarity);
+          const rolledRarity = rollRarityWithPity(GACHA_RATES.animal, pity.pullsSinceR4, pity.pullsSinceR5);
+          const { template, actualRarity } = pickAnimalTemplate(rolledRarity);
+          const isPity = actualRarity >= 4 && (pity.pullsSinceR4 >= PITY_CONFIG.hardPityR4 - 1 || pity.pullsSinceR5 >= PITY_CONFIG.hardPityR5 - 1);
+          const animal = createAnimalFromTemplate(template.id, actualRarity);
           const isNew = !currentState.ownedAnimals.some(a => a.templateId === template.id) && !newAnimals.some(a => a.templateId === template.id);
           newAnimals.push(animal);
-          newRecords.push(recordGacha('animal', 'animal', template.id, template.name, template.emoji, rarity, isNew));
+          newRecords.push(recordGacha('animal', 'animal', template.id, template.name, template.emoji, actualRarity, isNew));
           pityState = {
             ...pityState,
             animal: {
-              pullsSinceR4: rarity >= 4 ? 0 : pity.pullsSinceR4 + 1,
-              pullsSinceR5: rarity >= 5 ? 0 : pity.pullsSinceR5 + 1,
+              pullsSinceR4: rolledRarity >= 4 ? 0 : pity.pullsSinceR4 + 1,
+              pullsSinceR5: rolledRarity >= 5 ? 0 : pity.pullsSinceR5 + 1,
             },
           };
           result = { item: animal, itemType: 'animal', isNew, isPity, isFeatured: false };
@@ -986,23 +989,18 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
         case 'part': {
           const pity = pityState.part;
-          const rarity = rollRarityWithPity(GACHA_RATES.part, pity.pullsSinceR4, pity.pullsSinceR5);
-          const isPity = rarity >= 4 && (pity.pullsSinceR4 >= PITY_CONFIG.hardPityR4 - 1 || pity.pullsSinceR5 >= PITY_CONFIG.hardPityR5 - 1);
-          let pool = PART_TEMPLATES.filter(p => p.rarity === rarity);
-          if (pool.length === 0) {
-            pool = PART_TEMPLATES.filter(p => p.rarity <= rarity);
-            if (pool.length === 0) pool = PART_TEMPLATES;
-          }
-          const template = pickRandom(pool);
+          const rolledRarity = rollRarityWithPity(GACHA_RATES.part, pity.pullsSinceR4, pity.pullsSinceR5);
+          const { template, actualRarity } = pickPartTemplate(rolledRarity);
+          const isPity = actualRarity >= 4 && (pity.pullsSinceR4 >= PITY_CONFIG.hardPityR4 - 1 || pity.pullsSinceR5 >= PITY_CONFIG.hardPityR5 - 1);
           const part: Part = { ...template, id: generateId('part'), templateId: template.id };
           const isNew = !currentState.ownedParts.some(p => p.templateId === template.id) && !newParts.some(p => p.templateId === template.id);
           newParts.push(part);
-          newRecords.push(recordGacha('part', 'part', template.id, template.name, template.emoji, rarity, isNew));
+          newRecords.push(recordGacha('part', 'part', template.id, template.name, template.emoji, actualRarity, isNew));
           pityState = {
             ...pityState,
             part: {
-              pullsSinceR4: rarity >= 4 ? 0 : pity.pullsSinceR4 + 1,
-              pullsSinceR5: rarity >= 5 ? 0 : pity.pullsSinceR5 + 1,
+              pullsSinceR4: rolledRarity >= 4 ? 0 : pity.pullsSinceR4 + 1,
+              pullsSinceR5: rolledRarity >= 5 ? 0 : pity.pullsSinceR5 + 1,
             },
           };
           result = { item: part, itemType: 'part', isNew, isPity, isFeatured: false };
@@ -1010,24 +1008,18 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
         case 'skill': {
           const pity = pityState.skill;
-          const rarity = rollRarityWithPity(GACHA_RATES.skill, pity.pullsSinceR4, pity.pullsSinceR5);
-          const isPity = rarity >= 4 && (pity.pullsSinceR4 >= PITY_CONFIG.hardPityR4 - 1 || pity.pullsSinceR5 >= PITY_CONFIG.hardPityR5 - 1);
-          let pool = SKILL_TEMPLATES.filter(s => {
-            if (s.type === 'special') return rarity >= 3;
-            if (s.type === 'buff' || s.type === 'debuff') return rarity >= 2;
-            return true;
-          });
-          if (pool.length === 0) pool = SKILL_TEMPLATES;
-          const template = pickRandom(pool);
+          const rolledRarity = rollRarityWithPity(GACHA_RATES.skill, pity.pullsSinceR4, pity.pullsSinceR5);
+          const { template, actualRarity } = pickSkillTemplate(rolledRarity);
+          const isPity = actualRarity >= 4 && (pity.pullsSinceR4 >= PITY_CONFIG.hardPityR4 - 1 || pity.pullsSinceR5 >= PITY_CONFIG.hardPityR5 - 1);
           const skill: Skill = { ...template, id: generateId('skill'), templateId: template.id };
           const isNew = !currentState.ownedSkills.some(s => s.templateId === template.id) && !newSkills.some(s => s.templateId === template.id);
           newSkills.push(skill);
-          newRecords.push(recordGacha('skill', 'skill', template.id, template.name, template.emoji, rarity, isNew));
+          newRecords.push(recordGacha('skill', 'skill', template.id, template.name, template.emoji, actualRarity, isNew));
           pityState = {
             ...pityState,
             skill: {
-              pullsSinceR4: rarity >= 4 ? 0 : pity.pullsSinceR4 + 1,
-              pullsSinceR5: rarity >= 5 ? 0 : pity.pullsSinceR5 + 1,
+              pullsSinceR4: rolledRarity >= 4 ? 0 : pity.pullsSinceR4 + 1,
+              pullsSinceR5: rolledRarity >= 5 ? 0 : pity.pullsSinceR5 + 1,
             },
           };
           result = { item: skill, itemType: 'skill', isNew, isPity, isFeatured: false };
@@ -1035,11 +1027,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
         case 'limited': {
           const pity = pityState.limited;
-          const rarity = rollRarityWithPity(GACHA_RATES.limited, pity.pullsSinceR4, pity.pullsSinceR5, true);
-          const isPity = rarity >= 4 && (pity.pullsSinceR4 >= PITY_CONFIG.limitedHardPityR4 - 1 || pity.pullsSinceR5 >= PITY_CONFIG.limitedHardPityR5 - 1);
+          const rolledRarity = rollRarityWithPity(GACHA_RATES.limited, pity.pullsSinceR4, pity.pullsSinceR5, true);
+
           const lp = currentState.limitedPool;
-          const isFeaturedR5 = rarity === 5 && (pity.guaranteedFeatured || Math.random() * 100 < PITY_CONFIG.featuredR5Rate);
-          const isFeaturedR4 = rarity === 4 && Math.random() * 100 < PITY_CONFIG.featuredR4Rate;
+          const isFeaturedR5 = rolledRarity === 5 && (pity.guaranteedFeatured || Math.random() * 100 < PITY_CONFIG.featuredR5Rate);
+          const isFeaturedR4 = rolledRarity === 4 && Math.random() * 100 < PITY_CONFIG.featuredR4Rate;
           const isFeatured = isFeaturedR5 || isFeaturedR4;
 
           let itemType: 'animal' | 'part' | 'skill';
@@ -1047,23 +1039,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           let templateId: string;
           let itemName: string;
           let itemEmoji: string;
-
-          const rollNonFeatured = (): { itemType: 'animal' | 'part' | 'skill'; item: Animal | Part | Skill; templateId: string; itemName: string; itemEmoji: string } => {
-            const roll = Math.random();
-            if (roll < 0.34) {
-              const tPool = ANIMAL_TEMPLATES.filter(t => t.rarity <= rarity);
-              const t = pickRandom(tPool);
-              return { itemType: 'animal', item: createAnimalFromTemplate(t.id, rarity), templateId: t.id, itemName: t.name, itemEmoji: t.emoji };
-            } else if (roll < 0.67) {
-              const tPool = PART_TEMPLATES.filter(p => p.rarity <= rarity);
-              const t = pickRandom(tPool);
-              return { itemType: 'part', item: { ...t, id: generateId('part'), templateId: t.id, rarity }, templateId: t.id, itemName: t.name, itemEmoji: t.emoji };
-            } else {
-              const tPool = SKILL_TEMPLATES.filter(s => s.rarity <= rarity);
-              const t = pickRandom(tPool);
-              return { itemType: 'skill', item: { ...t, id: generateId('skill'), templateId: t.id, rarity }, templateId: t.id, itemName: t.name, itemEmoji: t.emoji };
-            }
-          };
+          let actualRarity: Rarity;
 
           if (isFeaturedR5 || isFeaturedR4) {
             const allFeatured = [
@@ -1071,9 +1047,9 @@ export const useGameStore = create<GameState>((set, get) => ({
               ...lp.featuredPartTemplateIds.map(id => ({ type: 'part' as const, id })),
               ...lp.featuredSkillTemplateIds.map(id => ({ type: 'skill' as const, id })),
             ].filter(fi => {
-              if (fi.type === 'animal') { const t = getAnimalTemplate(fi.id); return t && t.rarity <= rarity; }
-              if (fi.type === 'part') { const t = getPartTemplate(fi.id); return t && t.rarity <= rarity; }
-              const t = getSkillTemplate(fi.id); return t && t.rarity <= rarity;
+              if (fi.type === 'animal') { const t = getAnimalTemplate(fi.id); return t && t.rarity <= rolledRarity; }
+              if (fi.type === 'part') { const t = getPartTemplate(fi.id); return t && t.rarity <= rolledRarity; }
+              const t = getSkillTemplate(fi.id); return t && t.rarity <= rolledRarity;
             });
             if (allFeatured.length > 0) {
               const chosen = pickRandom(allFeatured);
@@ -1081,26 +1057,66 @@ export const useGameStore = create<GameState>((set, get) => ({
               templateId = chosen.id;
               if (itemType === 'animal') {
                 const template = getAnimalTemplate(templateId)!;
-                item = createAnimalFromTemplate(templateId, rarity);
+                actualRarity = template.rarity;
+                item = createAnimalFromTemplate(templateId, actualRarity);
                 itemName = template.name; itemEmoji = template.emoji;
               } else if (itemType === 'part') {
                 const template = getPartTemplate(templateId)!;
-                item = { ...template, id: generateId('part'), templateId: template.id, rarity };
+                actualRarity = template.rarity;
+                item = { ...template, id: generateId('part'), templateId: template.id };
                 itemName = template.name; itemEmoji = template.emoji;
               } else {
                 const template = getSkillTemplate(templateId)!;
-                item = { ...template, id: generateId('skill'), templateId: template.id, rarity };
+                actualRarity = template.rarity;
+                item = { ...template, id: generateId('skill'), templateId: template.id };
                 itemName = template.name; itemEmoji = template.emoji;
               }
             } else {
-              const r = rollNonFeatured();
-              itemType = r.itemType; item = r.item; templateId = r.templateId; itemName = r.itemName; itemEmoji = r.itemEmoji;
+              const roll = Math.random();
+              if (roll < 0.34) {
+                itemType = 'animal';
+                const { template, actualRarity: aR } = pickAnimalTemplate(rolledRarity);
+                actualRarity = aR; templateId = template.id;
+                item = createAnimalFromTemplate(templateId, actualRarity);
+                itemName = template.name; itemEmoji = template.emoji;
+              } else if (roll < 0.67) {
+                itemType = 'part';
+                const { template, actualRarity: aR } = pickPartTemplate(rolledRarity);
+                actualRarity = aR; templateId = template.id;
+                item = { ...template, id: generateId('part'), templateId: template.id };
+                itemName = template.name; itemEmoji = template.emoji;
+              } else {
+                itemType = 'skill';
+                const { template, actualRarity: aR } = pickSkillTemplate(rolledRarity);
+                actualRarity = aR; templateId = template.id;
+                item = { ...template, id: generateId('skill'), templateId: template.id };
+                itemName = template.name; itemEmoji = template.emoji;
+              }
             }
           } else {
-            const r = rollNonFeatured();
-            itemType = r.itemType; item = r.item; templateId = r.templateId; itemName = r.itemName; itemEmoji = r.itemEmoji;
+            const roll = Math.random();
+            if (roll < 0.34) {
+              itemType = 'animal';
+              const { template, actualRarity: aR } = pickAnimalTemplate(rolledRarity);
+              actualRarity = aR; templateId = template.id;
+              item = createAnimalFromTemplate(templateId, actualRarity);
+              itemName = template.name; itemEmoji = template.emoji;
+            } else if (roll < 0.67) {
+              itemType = 'part';
+              const { template, actualRarity: aR } = pickPartTemplate(rolledRarity);
+              actualRarity = aR; templateId = template.id;
+              item = { ...template, id: generateId('part'), templateId: template.id };
+              itemName = template.name; itemEmoji = template.emoji;
+            } else {
+              itemType = 'skill';
+              const { template, actualRarity: aR } = pickSkillTemplate(rolledRarity);
+              actualRarity = aR; templateId = template.id;
+              item = { ...template, id: generateId('skill'), templateId: template.id };
+              itemName = template.name; itemEmoji = template.emoji;
+            }
           }
 
+          const isPity = actualRarity >= 4 && (pity.pullsSinceR4 >= PITY_CONFIG.limitedHardPityR4 - 1 || pity.pullsSinceR5 >= PITY_CONFIG.limitedHardPityR5 - 1);
           const isNew = itemType === 'animal'
             ? !currentState.ownedAnimals.some(a => a.templateId === templateId) && !newAnimals.some(a => a.templateId === templateId)
             : itemType === 'part'
@@ -1111,17 +1127,17 @@ export const useGameStore = create<GameState>((set, get) => ({
           else if (itemType === 'part') newParts.push(item as Part);
           else newSkills.push(item as Skill);
 
-          newRecords.push(recordGacha('limited', itemType, templateId, itemName, itemEmoji, rarity, isNew));
+          newRecords.push(recordGacha('limited', itemType, templateId, itemName, itemEmoji, actualRarity, isNew));
 
           let newGuaranteedFeatured = pity.guaranteedFeatured;
-          if (rarity === 5) {
+          if (rolledRarity === 5) {
             newGuaranteedFeatured = !isFeaturedR5;
           }
           pityState = {
             ...pityState,
             limited: {
-              pullsSinceR4: rarity >= 4 ? 0 : pity.pullsSinceR4 + 1,
-              pullsSinceR5: rarity >= 5 ? 0 : pity.pullsSinceR5 + 1,
+              pullsSinceR4: rolledRarity >= 4 ? 0 : pity.pullsSinceR4 + 1,
+              pullsSinceR5: rolledRarity >= 5 ? 0 : pity.pullsSinceR5 + 1,
               guaranteedFeatured: newGuaranteedFeatured,
             },
           };
