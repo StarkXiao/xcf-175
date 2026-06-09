@@ -180,6 +180,19 @@ interface ReplayState {
   processLogEntry: (log: BattleLogEntry) => void;
 }
 
+const REPLAY_SPEED_KEY = 'replay-speed';
+
+const loadSavedSpeed = (): number => {
+  try {
+    const saved = localStorage.getItem(REPLAY_SPEED_KEY);
+    if (saved) {
+      const s = parseInt(saved, 10);
+      if (s >= 1 && s <= 3) return s;
+    }
+  } catch {}
+  return 1;
+};
+
 export const useReplayStore = create<ReplayState>((set, get) => ({
   playerUnits: [],
   enemyUnits: [],
@@ -187,7 +200,7 @@ export const useReplayStore = create<ReplayState>((set, get) => ({
   currentLogIndex: -1,
   isPlaying: false,
   isPaused: false,
-  speed: 1,
+  speed: loadSavedSpeed(),
   battleRecord: null,
   attackingUnitId: null,
   hurtUnitId: null,
@@ -207,7 +220,6 @@ export const useReplayStore = create<ReplayState>((set, get) => ({
       currentLogIndex: -1,
       isPlaying: false,
       isPaused: false,
-      speed: 1,
       battleRecord: record,
       attackingUnitId: null,
       hurtUnitId: null,
@@ -261,7 +273,9 @@ export const useReplayStore = create<ReplayState>((set, get) => ({
   },
 
   setSpeed: (speed: number) => {
-    set({ speed: Math.max(1, Math.min(3, speed)) });
+    const clamped = Math.max(1, Math.min(3, speed));
+    try { localStorage.setItem(REPLAY_SPEED_KEY, String(clamped)); } catch {}
+    set({ speed: clamped });
   },
 
   seekTo: (index: number) => {
@@ -308,7 +322,6 @@ export const useReplayStore = create<ReplayState>((set, get) => ({
       currentLogIndex: -1,
       isPlaying: false,
       isPaused: false,
-      speed: 1,
       battleRecord: null,
       attackingUnitId: null,
       hurtUnitId: null,
