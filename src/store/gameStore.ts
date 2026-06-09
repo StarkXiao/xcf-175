@@ -328,10 +328,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     const playerTeam: BattleUnit[] = playerAnimals
       .filter((a) => a.isDeployed)
       .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
-      .map((animal, idx) => createBattleUnit(animal, 'player', idx))
+      .map((animal, idx) => createBattleUnit(animal, 'player', idx, 'mid', 'lowestHp'))
 
     const enemyTeam: BattleUnit[] = enemies.map((animal, idx) =>
-      createBattleUnit(animal, 'enemy', idx)
+      createBattleUnit(animal, 'enemy', idx, 'mid', 'lowestHp')
     )
 
     const turnOrder = generateTurnOrder(playerTeam, enemyTeam)

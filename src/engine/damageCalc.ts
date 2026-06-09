@@ -1,6 +1,16 @@
-import type { BattleUnit, DamageResult, Element } from '@/types';
+import type { BattleUnit, DamageResult, Element, FormationPosition } from '@/types';
 import { BATTLE_CONSTANTS, hasElementAdvantage, hasElementDisadvantage, STATUS_EFFECT_CONFIG } from './constants';
 import { chance, clamp, random } from '@/utils/random';
+
+export const FORMATION_MODIFIERS: Record<FormationPosition, {
+  damageDealtMul: number;
+  damageTakenMul: number;
+  defBonus: number;
+}> = {
+  front: { damageDealtMul: 1.0, damageTakenMul: 0.85, defBonus: 15 },
+  mid: { damageDealtMul: 1.0, damageTakenMul: 1.0, defBonus: 0 },
+  back: { damageDealtMul: 1.15, damageTakenMul: 1.1, defBonus: -10 },
+};
 
 export const getElementMultiplier = (
   attackerElement: Element,
@@ -35,6 +45,9 @@ export const calculateDamage = (
   skillDamage: number = 0,
   skillElement?: Element
 ): DamageResult => {
+  const attackerFormation = FORMATION_MODIFIERS[attacker.formationPosition];
+  const defenderFormation = FORMATION_MODIFIERS[defender.formationPosition];
+
   const atkBonus = attacker.buffs
     .filter(b => b.stat === 'atk')
     .reduce((sum, b) => sum + b.value, 0);
@@ -53,7 +66,8 @@ export const calculateDamage = (
   }, 0);
 
   const finalAtk = attacker.atk * (1 + (atkBonus + statusAtkMod) / 100);
-  const finalDef = defender.def * (1 + (defBonus + statusDefMod) / 100);
+  const totalDefBonus = defBonus + statusDefMod + defenderFormation.defBonus;
+  const finalDef = defender.def * (1 + totalDefBonus / 100);
 
   let baseDamage = finalAtk - finalDef * BATTLE_CONSTANTS.DEFENSE_FACTOR;
   baseDamage += skillDamage;
@@ -69,7 +83,12 @@ export const calculateDamage = (
 
   const randomFactor = 1 + random(-BATTLE_CONSTANTS.RANDOM_DAMAGE_RANGE, BATTLE_CONSTANTS.RANDOM_DAMAGE_RANGE);
 
-  let finalDamage = Math.floor(baseDamage * critMultiplier * elementMultiplier * comboMultiplier * randomFactor);
+  const formationAttackMul = attackerFormation.damageDealtMul;
+  const formationDefenseMul = defenderFormation.damageTakenMul;
+
+  let finalDamage = Math.floor(
+    baseDamage * critMultiplier * elementMultiplier * comboMultiplier * randomFactor * formationAttackMul * formationDefenseMul
+  );
   finalDamage = clamp(finalDamage, 1, 9999);
 
   const isBlocked = finalDamage <= 1 && baseDamage < defender.def * 0.3;
@@ -139,4 +158,24 @@ export const getHighestAtkTarget = (units: BattleUnit[]): BattleUnit | undefined
   return alive.reduce((highest, current) =>
     getEffectiveStat(current, 'atk') > getEffectiveStat(highest, 'atk') ? current : highest
   );
+};
+
+export const getWeakestDefTarget = (units: BattleUnit[]): BattleUnit | undefined => {
+  const alive = getAliveUnits(units);
+  if (alive.length === 0) return undefined;
+  return alive.reduce((weakest, current) =>
+    getEffectiveStat(current, 'def') < getEffectiveStat(weakest, 'def') ? current : weakest
+  );
+};
+
+export const getHighestThreatTarget = (units: BattleUnit[]): BattleUnit | undefined => {
+  const alive = getAliveUnits(units);
+  if (alive.length === 0) return undefined;
+  return alive.reduce((highest, current) => {
+    const threatA = getEffectiveStat(current, 'atk') * (current.currentHp / current.maxHp)
+      + (current.formationPosition === 'back' ? 20 : 0);
+    const threatB = getEffectiveStat(highest, 'atk') * (highest.currentHp / highest.maxHp)
+      + (highest.formationPosition === 'back' ? 20 : 0);
+    return threatA > threatB ? current : highest;
+  });
 };

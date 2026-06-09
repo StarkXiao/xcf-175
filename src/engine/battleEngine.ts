@@ -6,6 +6,10 @@ import type {
   BattleSide,
   StatusEffectPayload,
   BuffPayload,
+  LineupConfig,
+  FormationPosition,
+  TargetStrategy,
+  ActionPriority,
 } from '@/types';
 import { getAnimalTemplate } from '@/data/animals';
 import { getSkillTemplate } from '@/data/skills';
@@ -20,6 +24,8 @@ import {
   getRandomTarget,
   getLowestHpTarget,
   getHighestAtkTarget,
+  getWeakestDefTarget,
+  getHighestThreatTarget,
   getAliveUnits,
   isTeamAlive,
 } from './damageCalc';
@@ -59,7 +65,9 @@ export const calculateAnimalStats = (animal: Animal): {
 export const createBattleUnit = (
   animal: Animal,
   side: BattleSide,
-  position: number
+  position: number,
+  formationPosition: FormationPosition = 'mid',
+  targetStrategy: TargetStrategy = 'lowestHp'
 ): BattleUnit => {
   const template = getAnimalTemplate(animal.templateId);
   const stats = calculateAnimalStats(animal);
@@ -114,6 +122,8 @@ export const createBattleUnit = (
     isAlive: true,
     side,
     position,
+    formationPosition,
+    targetStrategy,
     buffs: [],
     statusEffects: [],
     comboCount: 0,
@@ -162,22 +172,58 @@ export const generateEnemyTeam = (playerAvgLevel: number) => {
   };
 };
 
-export const getActionOrder = (units: BattleUnit[]): BattleUnit[] => {
-  return [...units]
-    .filter(u => u.isAlive)
-    .sort((a, b) => {
-      const spdModA = a.statusEffects.reduce((sum, se) => {
-        const config = STATUS_EFFECT_CONFIG[se.type];
-        return sum + (config?.statModifier?.stat === 'spd' ? config.statModifier.value : 0);
-      }, 0);
-      const spdModB = b.statusEffects.reduce((sum, se) => {
-        const config = STATUS_EFFECT_CONFIG[se.type];
-        return sum + (config?.statModifier?.stat === 'spd' ? config.statModifier.value : 0);
-      }, 0);
-      const spdA = a.spd * (1 + (a.buffs.filter(b => b.stat === 'spd').reduce((s, b) => s + b.value, 0) + spdModA) / 100);
-      const spdB = b.spd * (1 + (b.buffs.filter(b => b.stat === 'spd').reduce((s, b) => s + b.value, 0) + spdModB) / 100);
+export const getActionOrder = (
+  units: BattleUnit[],
+  actionPriority: ActionPriority = 'speedFirst'
+): BattleUnit[] => {
+  const alive = [...units].filter(u => u.isAlive);
+
+  if (actionPriority === 'aggressive') {
+    return alive.sort((a, b) => {
+      const isAttackA = a.skills.some(s => (s.type === 'attack' || s.type === 'special') && s.currentCooldown === 0);
+      const isAttackB = b.skills.some(s => (s.type === 'attack' || s.type === 'special') && s.currentCooldown === 0);
+      if (isAttackA && !isAttackB) return -1;
+      if (!isAttackA && isAttackB) return 1;
+      const spdA = getEffectiveUnitSpd(a);
+      const spdB = getEffectiveUnitSpd(b);
       return spdB - spdA;
     });
+  }
+
+  if (actionPriority === 'strategic') {
+    return alive.sort((a, b) => {
+      const priorityA = getStrategicPriority(a);
+      const priorityB = getStrategicPriority(b);
+      if (priorityA !== priorityB) return priorityB - priorityA;
+      const spdA = getEffectiveUnitSpd(a);
+      const spdB = getEffectiveUnitSpd(b);
+      return spdB - spdA;
+    });
+  }
+
+  return alive.sort((a, b) => {
+    const spdA = getEffectiveUnitSpd(a);
+    const spdB = getEffectiveUnitSpd(b);
+    return spdB - spdA;
+  });
+};
+
+const getEffectiveUnitSpd = (unit: BattleUnit): number => {
+  const spdMod = unit.statusEffects.reduce((sum, se) => {
+    const config = STATUS_EFFECT_CONFIG[se.type];
+    return sum + (config?.statModifier?.stat === 'spd' ? config.statModifier.value : 0);
+  }, 0);
+  const buffMod = unit.buffs.filter(b => b.stat === 'spd').reduce((s, b) => s + b.value, 0);
+  return unit.spd * (1 + (buffMod + spdMod) / 100);
+};
+
+const getStrategicPriority = (unit: BattleUnit): number => {
+  let priority = 0;
+  if (unit.skills.some(s => s.type === 'buff' && s.currentCooldown === 0)) priority += 3;
+  if (unit.skills.some(s => s.type === 'debuff' && s.currentCooldown === 0)) priority += 2;
+  if (unit.currentHp / unit.maxHp < 0.4 && unit.skills.some(s => s.type === 'heal' && s.currentCooldown === 0)) priority += 4;
+  if (unit.formationPosition === 'front') priority += 1;
+  return priority;
 };
 
 export const selectSkillForUnit = (unit: BattleUnit): BattleSkill | null => {
@@ -231,12 +277,21 @@ export const selectTarget = (
     return getAliveUnits(enemies);
   }
 
-  if (chance(50)) {
+  const strategy = attacker.targetStrategy;
+
+  if (strategy === 'lowestHp') {
     return getLowestHpTarget(enemies);
   }
-  if (chance(50)) {
+  if (strategy === 'highestAtk') {
     return getHighestAtkTarget(enemies);
   }
+  if (strategy === 'weakest') {
+    return getWeakestDefTarget(enemies);
+  }
+  if (strategy === 'highestThreat') {
+    return getHighestThreatTarget(enemies);
+  }
+
   return getRandomTarget(enemies);
 };
 
@@ -713,7 +768,8 @@ export const resetComboCounts = (units: BattleUnit[]): void => {
 
 export const simulateFullBattle = (
   playerAnimals: Animal[],
-  betAmount: number
+  betAmount: number,
+  lineupConfig?: LineupConfig
 ): {
   playerUnits: BattleUnit[];
   enemyUnits: BattleUnit[];
@@ -731,11 +787,16 @@ export const simulateFullBattle = (
 
   const { opponent, animals: enemyAnimals } = generateEnemyTeam(playerAvgLevel);
 
-  const playerUnits = playerAnimals.map((animal, i) =>
-    createBattleUnit(animal, 'player', i)
-  );
+  const config = lineupConfig || { animals: [], actionPriority: 'speedFirst' as ActionPriority };
+
+  const playerUnits = playerAnimals.map((animal, i) => {
+    const animalConfig = config.animals.find(c => c.animalId === animal.id);
+    const formationPos = animalConfig?.position || (i === 0 ? 'front' : i === 1 ? 'mid' : 'back') as FormationPosition;
+    const targetStrat = animalConfig?.targetStrategy || 'lowestHp' as TargetStrategy;
+    return createBattleUnit(animal, 'player', i, formationPos, targetStrat);
+  });
   const enemyUnits = enemyAnimals.map((animal, i) =>
-    createBattleUnit(animal, 'enemy', i)
+    createBattleUnit(animal, 'enemy', i, 'mid', 'lowestHp')
   );
 
   const initialPlayerUnits = JSON.parse(JSON.stringify(playerUnits));
@@ -757,7 +818,7 @@ export const simulateFullBattle = (
 
     if (!isTeamAlive(playerUnits) || !isTeamAlive(enemyUnits)) break;
 
-    const actionOrder = getActionOrder([...playerUnits, ...enemyUnits]);
+    const actionOrder = getActionOrder([...playerUnits, ...enemyUnits], config.actionPriority);
 
     for (const unit of actionOrder) {
       if (!unit.isAlive) continue;

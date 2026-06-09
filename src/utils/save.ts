@@ -49,7 +49,7 @@ export const hasExistingSave = (): boolean => {
 
 export const createNewSaveData = (): SaveData => {
   return {
-    version: 2,
+    version: 3,
     timestamp: Date.now(),
     player: {
       id: 'new_player',
@@ -66,6 +66,7 @@ export const createNewSaveData = (): SaveData => {
     ownedParts: [],
     ownedSkills: [],
     lineup: [],
+    lineupConfig: { animals: [], actionPriority: 'speedFirst' },
     battleHistory: [],
   };
 };
@@ -172,65 +173,107 @@ const resolveSkillId = (
 };
 
 export const migrateSaveData = (data: SaveData): SaveData => {
-  if (data.version >= 2) return data;
+  if (data.version >= 3) return data;
 
-  const partInstanceToTemplate: Record<string, string> = {};
-  const skillInstanceToTemplate: Record<string, string> = {};
+  let migrated = { ...data };
 
-  const migratedParts = data.ownedParts.map(part => {
-    const templateId = inferPartTemplateId(part);
-    if (templateId) partInstanceToTemplate[part.id] = templateId;
-    return templateId ? { ...part, templateId } : part;
-  });
+  if (migrated.version < 2) {
+    const partInstanceToTemplate: Record<string, string> = {};
+    const skillInstanceToTemplate: Record<string, string> = {};
 
-  const migratedSkills = data.ownedSkills.map(skill => {
-    const templateId = inferSkillTemplateId(skill);
-    if (templateId) skillInstanceToTemplate[skill.id] = templateId;
-    return templateId ? { ...skill, templateId } : skill;
-  });
+    const migratedParts = migrated.ownedParts.map(part => {
+      const templateId = inferPartTemplateId(part);
+      if (templateId) partInstanceToTemplate[part.id] = templateId;
+      return templateId ? { ...part, templateId } : part;
+    });
 
-  const migrateAnimal = (animal: Animal): Animal => {
-    const migratedParts: EquippedPart[] = animal.parts.map(ep => ({
-      ...ep,
-      partId: resolvePartId(ep.partId, partInstanceToTemplate, ep.slot),
-    }));
+    const migratedSkills = migrated.ownedSkills.map(skill => {
+      const templateId = inferSkillTemplateId(skill);
+      if (templateId) skillInstanceToTemplate[skill.id] = templateId;
+      return templateId ? { ...skill, templateId } : skill;
+    });
 
-    const migratedSkills: EquippedSkill[] = animal.skills.map(es => ({
-      ...es,
-      skillId: resolveSkillId(es.skillId, skillInstanceToTemplate),
-    }));
+    const migrateAnimal = (animal: Animal): Animal => {
+      const migratedParts: EquippedPart[] = animal.parts.map(ep => ({
+        ...ep,
+        partId: resolvePartId(ep.partId, partInstanceToTemplate, ep.slot),
+      }));
 
-    return { ...animal, parts: migratedParts, skills: migratedSkills };
+      const migratedSkills: EquippedSkill[] = animal.skills.map(es => ({
+        ...es,
+        skillId: resolveSkillId(es.skillId, skillInstanceToTemplate),
+      }));
+
+      return { ...animal, parts: migratedParts, skills: migratedSkills };
+    };
+
+    const migratedAnimals = migrated.ownedAnimals.map(migrateAnimal);
+
+    const migratedBattleHistory = migrated.battleHistory.map(record => {
+      const migrateUnitSkills = <T extends { skills: { skillId: string }[] }>(unit: T): T => {
+        return {
+          ...unit,
+          skills: unit.skills.map(s => ({
+            ...s,
+            skillId: resolveSkillId(s.skillId, skillInstanceToTemplate),
+          })),
+        } as T;
+      };
+
+      return {
+        ...record,
+        playerUnits: record.playerUnits.map(migrateUnitSkills),
+        enemyUnits: record.enemyUnits.map(migrateUnitSkills),
+        initialPlayerUnits: record.initialPlayerUnits?.map(migrateUnitSkills) || record.initialPlayerUnits,
+        initialEnemyUnits: record.initialEnemyUnits?.map(migrateUnitSkills) || record.initialEnemyUnits,
+      };
+    });
+
+    migrated = {
+      ...migrated,
+      version: 2,
+      ownedParts: migratedParts,
+      ownedSkills: migratedSkills,
+      ownedAnimals: migratedAnimals,
+      battleHistory: migratedBattleHistory,
+    };
+  }
+
+  if (!migrated.lineupConfig) {
+    migrated = {
+      ...migrated,
+      version: 3,
+      lineupConfig: {
+        animals: migrated.lineup.map((id, i) => ({
+          animalId: id,
+          position: i === 0 ? 'front' : i === 1 ? 'mid' : 'back',
+          targetStrategy: 'lowestHp',
+        })),
+        actionPriority: 'speedFirst',
+      },
+    };
+  } else {
+    migrated = { ...migrated, version: 3 };
+  }
+
+  const migrateBattleUnit = (unit: unknown): unknown => {
+    const u = unit as Record<string, unknown>;
+    if (!u.formationPosition) {
+      return { ...u, formationPosition: 'mid', targetStrategy: 'lowestHp' };
+    }
+    return unit;
   };
 
-  const migratedAnimals = data.ownedAnimals.map(migrateAnimal);
-
-  const migratedBattleHistory = data.battleHistory.map(record => {
-    const migrateUnitSkills = <T extends { skills: { skillId: string }[] }>(unit: T): T => {
-      return {
-        ...unit,
-        skills: unit.skills.map(s => ({
-          ...s,
-          skillId: resolveSkillId(s.skillId, skillInstanceToTemplate),
-        })),
-      } as T;
-    };
-
-    return {
-      ...record,
-      playerUnits: record.playerUnits.map(migrateUnitSkills),
-      enemyUnits: record.enemyUnits.map(migrateUnitSkills),
-      initialPlayerUnits: record.initialPlayerUnits?.map(migrateUnitSkills) || record.initialPlayerUnits,
-      initialEnemyUnits: record.initialEnemyUnits?.map(migrateUnitSkills) || record.initialEnemyUnits,
-    };
-  });
+  const migratedBattleHistory = migrated.battleHistory.map(record => ({
+    ...record,
+    playerUnits: record.playerUnits.map(migrateBattleUnit) as typeof record.playerUnits,
+    enemyUnits: record.enemyUnits.map(migrateBattleUnit) as typeof record.enemyUnits,
+    initialPlayerUnits: record.initialPlayerUnits?.map(migrateBattleUnit) as typeof record.initialPlayerUnits || record.initialPlayerUnits,
+    initialEnemyUnits: record.initialEnemyUnits?.map(migrateBattleUnit) as typeof record.initialEnemyUnits || record.initialEnemyUnits,
+  }));
 
   return {
-    ...data,
-    version: 2,
-    ownedParts: migratedParts,
-    ownedSkills: migratedSkills,
-    ownedAnimals: migratedAnimals,
+    ...migrated,
     battleHistory: migratedBattleHistory,
-  };
+  } as SaveData;
 };

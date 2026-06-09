@@ -1,3 +1,20 @@
+export type FormationPosition = 'front' | 'mid' | 'back';
+
+export type TargetStrategy = 'lowestHp' | 'highestAtk' | 'weakest' | 'random' | 'highestThreat';
+
+export type ActionPriority = 'speedFirst' | 'strategic' | 'aggressive';
+
+export interface AnimalFormationConfig {
+  animalId: string;
+  position: FormationPosition;
+  targetStrategy: TargetStrategy;
+}
+
+export interface LineupConfig {
+  animals: AnimalFormationConfig[];
+  actionPriority: ActionPriority;
+}
+
 export type Rarity = 1 | 2 | 3 | 4 | 5;
 
 export type PartSlot = 'head' | 'body' | 'limbs' | 'weapon' | 'core' | 'special';
@@ -202,6 +219,8 @@ export interface BattleUnit {
   isAlive: boolean;
   side: BattleSide;
   position: number;
+  formationPosition: FormationPosition;
+  targetStrategy: TargetStrategy;
   buffs: BattleBuff[];
   statusEffects: StatusEffect[];
   comboCount: number;
@@ -311,6 +330,7 @@ export interface SaveData {
   ownedParts: Part[];
   ownedSkills: Skill[];
   lineup: string[];
+  lineupConfig: LineupConfig;
   battleHistory: BattleRecord[];
 }
 

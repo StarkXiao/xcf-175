@@ -9,6 +9,11 @@ import type {
   EquippedSkill,
   Rarity,
   PartSlot,
+  LineupConfig,
+  AnimalFormationConfig,
+  FormationPosition,
+  TargetStrategy,
+  ActionPriority,
 } from '@/types';
 import { ANIMAL_TEMPLATES } from '@/data/animals';
 import { PART_TEMPLATES } from '@/data/parts';
@@ -45,6 +50,7 @@ interface GameState {
   ownedParts: Part[];
   ownedSkills: Skill[];
   lineup: string[];
+  lineupConfig: LineupConfig;
   battleHistory: BattleRecord[];
   isLoading: boolean;
   isNewPlayer: boolean;
@@ -61,6 +67,11 @@ interface GameState {
 
   addToLineup: (animalId: string) => boolean;
   removeFromLineup: (animalId: string) => void;
+
+  setFormationPosition: (animalId: string, position: FormationPosition) => void;
+  setTargetStrategy: (animalId: string, strategy: TargetStrategy) => void;
+  setActionPriority: (priority: ActionPriority) => void;
+  getLineupConfig: () => LineupConfig;
 
   equipPart: (animalId: string, partId: string, slot: PartSlot) => boolean;
   unequipPart: (animalId: string, slot: PartSlot) => void;
@@ -150,6 +161,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   ownedParts: [],
   ownedSkills: [],
   lineup: [],
+  lineupConfig: { animals: [], actionPriority: 'speedFirst' },
   battleHistory: [],
   isLoading: true,
   isNewPlayer: false,
@@ -188,6 +200,14 @@ export const useGameStore = create<GameState>((set, get) => ({
       ownedParts: initialParts,
       ownedSkills: initialSkills,
       lineup: initialAnimals.map(a => a.id),
+      lineupConfig: {
+        animals: initialAnimals.map((a, i) => ({
+          animalId: a.id,
+          position: (i === 0 ? 'front' : i === 1 ? 'mid' : 'back') as FormationPosition,
+          targetStrategy: 'lowestHp' as TargetStrategy,
+        })),
+        actionPriority: 'speedFirst' as ActionPriority,
+      },
       battleHistory: [],
       isLoading: false,
       isNewPlayer: true,
@@ -234,6 +254,14 @@ export const useGameStore = create<GameState>((set, get) => ({
       ownedParts: data.ownedParts,
       ownedSkills: data.ownedSkills,
       lineup: data.lineup,
+      lineupConfig: data.lineupConfig || {
+        animals: data.lineup.map((id, i) => ({
+          animalId: id,
+          position: (i === 0 ? 'front' : i === 1 ? 'mid' : 'back') as FormationPosition,
+          targetStrategy: 'lowestHp' as TargetStrategy,
+        })),
+        actionPriority: 'speedFirst' as ActionPriority,
+      },
       battleHistory: data.battleHistory,
       isLoading: false,
       isNewPlayer: false,
@@ -247,13 +275,14 @@ export const useGameStore = create<GameState>((set, get) => ({
   saveGame: (force: boolean = false) => {
     const state = get();
     const saveData: SaveData = {
-      version: 2,
+      version: 3,
       timestamp: Date.now(),
       player: state.player,
       ownedAnimals: state.ownedAnimals,
       ownedParts: state.ownedParts,
       ownedSkills: state.ownedSkills,
       lineup: state.lineup,
+      lineupConfig: state.lineupConfig,
       battleHistory: state.battleHistory,
     };
 
@@ -282,6 +311,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       ownedParts: [],
       ownedSkills: [],
       lineup: [],
+      lineupConfig: { animals: [], actionPriority: 'speedFirst' },
       battleHistory: [],
       isLoading: true,
       isNewPlayer: false,
@@ -329,14 +359,69 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (state.lineup.length >= BATTLE_CONSTANTS.MAX_TEAM_SIZE) return false;
     if (!state.ownedAnimals.some(a => a.id === animalId)) return false;
 
-    set(state => ({ lineup: [...state.lineup, animalId] }));
+    const positions: FormationPosition[] = ['front', 'mid', 'back'];
+    const usedPositions = new Set(state.lineupConfig.animals.map(a => a.position));
+    const nextPosition = positions.find(p => !usedPositions.has(p)) || 'back';
+
+    set(state => ({
+      lineup: [...state.lineup, animalId],
+      lineupConfig: {
+        ...state.lineupConfig,
+        animals: [...state.lineupConfig.animals, {
+          animalId,
+          position: nextPosition,
+          targetStrategy: 'lowestHp' as TargetStrategy,
+        }],
+      },
+    }));
     get().saveGame();
     return true;
   },
 
   removeFromLineup: (animalId: string) => {
-    set(state => ({ lineup: state.lineup.filter(id => id !== animalId) }));
+    set(state => ({
+      lineup: state.lineup.filter(id => id !== animalId),
+      lineupConfig: {
+        ...state.lineupConfig,
+        animals: state.lineupConfig.animals.filter(a => a.animalId !== animalId),
+      },
+    }));
     get().saveGame();
+  },
+
+  setFormationPosition: (animalId: string, position: FormationPosition) => {
+    set(state => ({
+      lineupConfig: {
+        ...state.lineupConfig,
+        animals: state.lineupConfig.animals.map(a =>
+          a.animalId === animalId ? { ...a, position } : a
+        ),
+      },
+    }));
+    get().saveGame();
+  },
+
+  setTargetStrategy: (animalId: string, strategy: TargetStrategy) => {
+    set(state => ({
+      lineupConfig: {
+        ...state.lineupConfig,
+        animals: state.lineupConfig.animals.map(a =>
+          a.animalId === animalId ? { ...a, targetStrategy: strategy } : a
+        ),
+      },
+    }));
+    get().saveGame();
+  },
+
+  setActionPriority: (priority: ActionPriority) => {
+    set(state => ({
+      lineupConfig: { ...state.lineupConfig, actionPriority: priority },
+    }));
+    get().saveGame();
+  },
+
+  getLineupConfig: () => {
+    return get().lineupConfig;
   },
 
   equipPart: (animalId: string, partId: string, slot: PartSlot): boolean => {
@@ -579,7 +664,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       },
     }));
 
-    const result = simulateFullBattle(lineupAnimals, betAmount);
+    const result = simulateFullBattle(lineupAnimals, betAmount, state.lineupConfig);
 
     const battleRecord: BattleRecord = {
       id: generateBattleId(),

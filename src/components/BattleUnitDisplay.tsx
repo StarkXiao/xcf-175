@@ -1,8 +1,22 @@
 import { cn } from '@/lib/utils';
-import type { BattleUnit } from '@/types';
+import type { BattleUnit, FormationPosition, TargetStrategy } from '@/types';
 import { ELEMENT_EMOJIS, ELEMENT_COLORS, ELEMENT_NAMES, STATUS_EFFECT_CONFIG } from '@/engine/constants';
 import { HealthBar } from './HealthBar';
 import { SkillIcon } from './SkillIcon';
+
+const FORMATION_LABELS: Record<FormationPosition, { emoji: string; label: string; color: string }> = {
+  front: { emoji: '🛡️', label: '前排', color: '#00ffff' },
+  mid: { emoji: '⚔️', label: '中排', color: '#ffee00' },
+  back: { emoji: '🏹', label: '后排', color: '#ff0080' },
+};
+
+const TARGET_LABELS: Record<TargetStrategy, { emoji: string; label: string }> = {
+  lowestHp: { emoji: '🎯', label: '残血' },
+  highestAtk: { emoji: '🔥', label: '威胁' },
+  weakest: { emoji: '💥', label: '破防' },
+  highestThreat: { emoji: '⚠️', label: '高危' },
+  random: { emoji: '🎲', label: '随机' },
+};
 
 interface BattleUnitDisplayProps {
   unit: BattleUnit;
@@ -62,6 +76,26 @@ export const BattleUnitDisplay = ({
         >
           {ELEMENT_EMOJIS[unit.element]}
         </div>
+
+        <div
+          className="absolute -bottom-1 -left-1 w-6 h-6 rounded-full flex items-center justify-center text-xs border bg-cyber-darker"
+          style={{
+            borderColor: FORMATION_LABELS[unit.formationPosition].color,
+            boxShadow: `0 0 6px ${FORMATION_LABELS[unit.formationPosition].color}40`,
+          }}
+          title={`${FORMATION_LABELS[unit.formationPosition].label}站位`}
+        >
+          {FORMATION_LABELS[unit.formationPosition].emoji}
+        </div>
+
+        {unit.side === 'player' && (
+          <div
+            className="absolute -bottom-1 -right-1 px-1 py-0.5 rounded text-[10px] font-cyber border bg-cyber-darker border-cyber-yellow/50 text-cyber-yellow"
+            title={`目标策略: ${TARGET_LABELS[unit.targetStrategy].label}`}
+          >
+            {TARGET_LABELS[unit.targetStrategy].emoji}
+          </div>
+        )}
 
         {(unit.buffs.length > 0 || unit.statusEffects.length > 0) && (
           <div className="absolute -top-2 -right-2 flex gap-0.5 flex-wrap max-w-[40px]">
