@@ -363,3 +363,37 @@ export const RANK_DEMOTION_PROTECTION_THRESHOLD: Record<string, number> = {
   master: 400,
   grandmaster: 600,
 };
+
+export const GUILD_EXPEDITION_CONFIG = {
+  MAX_TEAM_SIZE: 3,
+  MAX_ATTEMPTS_PER_BOSS: 5,
+  BOSS_DAMAGE_CONTRIBUTION_RATE: 10,
+  WEEKLY_SETTLEMENT_DAY: 1,
+  SETTLEMENT_HOUR: 0,
+  GUILD_TOKEN_PER_DAMAGE: 0.01,
+  GUILD_TOKEN_PER_KILL: 50,
+  GUILD_EXP_PER_BOSS_KILL: 200,
+  GUILD_LEVEL_EXP_BASE: 500,
+  GUILD_LEVEL_EXP_MULTIPLIER: 1.5,
+  MEMBER_COUNT: 5,
+  SHOP_RESET_WEEKLY: true,
+  CONTRIBUTION_PER_BATTLE: 10,
+  CONTRIBUTION_PER_PHASE_CLEAR: 30,
+  CONTRIBUTION_PER_BOSS_KILL: 100,
+} as const;
+
+export const GUILD_LEVEL_NAMES: Record<number, string> = {
+  1: '初创公会',
+  2: '成长公会',
+  3: '精英公会',
+  4: '传奇公会',
+  5: '神话公会',
+};
+
+export const GUILD_LEVEL_COLORS: Record<number, string> = {
+  1: '#9ca3af',
+  2: '#22c55e',
+  3: '#3b82f6',
+  4: '#a855f7',
+  5: '#f59e0b',
+};

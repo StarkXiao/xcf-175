@@ -508,6 +508,7 @@ export interface SaveData {
   gachaRecords?: GachaRecord[];
   limitedPool?: LimitedPoolConfig;
   seasonData?: SeasonSaveData;
+  guildData?: GuildExpeditionSaveData;
 }
 
 export interface SeasonSaveData {
@@ -707,4 +708,137 @@ export interface DamageResult {
   isElementAdvantage?: boolean;
   isElementDisadvantage?: boolean;
   elementAdvantageMultiplier?: number;
+}
+
+export type BossPhase = 1 | 2 | 3;
+
+export interface BossPhaseConfig {
+  phase: BossPhase;
+  hpPercent: number;
+  atkMultiplier: number;
+  defMultiplier: number;
+  specialSkill: string;
+  specialSkillName: string;
+  specialSkillEmoji: string;
+  specialSkillChance: number;
+  enrageTurns?: number;
+  enrageAtkBonus?: number;
+}
+
+export interface GuildBossTemplate {
+  id: string;
+  name: string;
+  emoji: string;
+  description: string;
+  element: Element;
+  baseHp: number;
+  baseAtk: number;
+  baseDef: number;
+  baseSpd: number;
+  rarity: Rarity;
+  phases: BossPhaseConfig[];
+  rewards: BossReward[];
+  weeklyScore: number;
+}
+
+export interface BossReward {
+  type: 'coins' | 'gems' | 'guildToken' | 'material';
+  amount: number;
+  materialTemplateId?: string;
+  phase: BossPhase;
+}
+
+export interface GuildBossInstance {
+  templateId: string;
+  currentHp: number;
+  maxHp: number;
+  currentPhase: BossPhase;
+  totalDamageDealt: number;
+  isDefeated: boolean;
+  defeatedPhases: BossPhase[];
+  attemptsUsed: number;
+}
+
+export interface GuildMember {
+  id: string;
+  name: string;
+  avatar: string;
+  level: number;
+  contribution: number;
+  weeklyContribution: number;
+  teamAnimalIds: string[];
+  isOnline: boolean;
+}
+
+export interface ExpeditionTeam {
+  memberId: string;
+  animalIds: string[];
+  formationPosition: FormationPosition[];
+}
+
+export interface GuildShopItem {
+  id: string;
+  name: string;
+  emoji: string;
+  description: string;
+  cost: number;
+  itemType: 'animal' | 'part' | 'skill' | 'material';
+  rarity: Rarity;
+  templateId: string;
+  weeklyStock: number;
+  currentStock: number;
+}
+
+export interface GuildContributionRecord {
+  weekId: string;
+  memberId: string;
+  contribution: number;
+  bossDamage: number;
+  bossKills: number;
+  rewards: GuildSettlementReward[];
+  timestamp: number;
+}
+
+export interface GuildSettlementReward {
+  type: 'coins' | 'gems' | 'guildToken' | 'material';
+  amount: number;
+  materialTemplateId?: string;
+}
+
+export interface GuildExpeditionState {
+  guildName: string;
+  guildLevel: number;
+  guildExp: number;
+  guildExpToNext: number;
+  guildTokens: number;
+  members: GuildMember[];
+  activeBoss: GuildBossInstance | null;
+  expeditionTeams: ExpeditionTeam[];
+  shopPurchases: Record<string, number>;
+  weeklyContribution: number;
+  totalContribution: number;
+  weeklyBossDamage: number;
+  weeklyBossKills: number;
+  currentWeekId: string;
+  contributionHistory: GuildContributionRecord[];
+  lastSettlementTime: number;
+  isInitialized: boolean;
+}
+
+export interface GuildExpeditionSaveData {
+  guildName: string;
+  guildLevel: number;
+  guildExp: number;
+  guildTokens: number;
+  members: GuildMember[];
+  activeBoss: GuildBossInstance | null;
+  expeditionTeams: ExpeditionTeam[];
+  shopPurchases: Record<string, number>;
+  weeklyContribution: number;
+  totalContribution: number;
+  weeklyBossDamage: number;
+  weeklyBossKills: number;
+  currentWeekId: string;
+  contributionHistory: GuildContributionRecord[];
+  lastSettlementTime: number;
 }

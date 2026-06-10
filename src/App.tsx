@@ -9,18 +9,22 @@ import Shop from '@/pages/Shop';
 import Ascend from '@/pages/Ascend';
 import Codex from '@/pages/Codex';
 import Season from '@/pages/Season';
+import GuildExpedition from '@/pages/GuildExpedition';
 import { useGameStore } from '@/store/useGameStore';
 import { useSeasonStore } from '@/store/useSeasonStore';
+import { useGuildStore } from '@/store/useGuildStore';
 import { useEffect } from 'react';
 
 function App() {
   const { initialize, isInitialized } = useGameStore();
   const initSeason = useSeasonStore(state => state.initSeason);
+  const initGuild = useGuildStore(state => state.initGuild);
 
   useEffect(() => {
     initialize();
     initSeason();
-  }, [initialize, initSeason]);
+    initGuild();
+  }, [initialize, initSeason, initGuild]);
 
   if (!isInitialized) {
     return (
@@ -61,6 +65,7 @@ function App() {
             <Route path="/ascend" element={<Ascend />} />
             <Route path="/codex" element={<Codex />} />
             <Route path="/season" element={<Season />} />
+            <Route path="/guild" element={<GuildExpedition />} />
           </Routes>
           <NavBar />
         </div>
