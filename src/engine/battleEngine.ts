@@ -130,6 +130,23 @@ export const createBattleUnit = (
       let branchName: string | undefined;
       let branchPassive: PassiveEffect | undefined;
 
+      if (es.modifications) {
+        if (es.modifications.damageBonus) {
+          finalDamage = Math.floor(finalDamage * (1 + es.modifications.damageBonus / 100));
+        }
+        if (es.modifications.cooldownReduction) {
+          finalCooldown = Math.max(1, finalCooldown - es.modifications.cooldownReduction);
+        }
+        if (es.modifications.addStatusEffect) {
+          finalStatusEffect = { ...es.modifications.addStatusEffect };
+        } else if (es.modifications.statusEffectChanceBonus && finalStatusEffect) {
+          finalStatusEffect = {
+            ...finalStatusEffect,
+            chance: Math.min(100, finalStatusEffect.chance + es.modifications.statusEffectChanceBonus),
+          };
+        }
+      }
+
       if (es.branchId && skill.branches) {
         const branch = skill.branches.find(b => b.id === es.branchId);
         if (branch) {

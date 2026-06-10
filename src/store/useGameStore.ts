@@ -6,6 +6,7 @@ import type {
   BattleRecord,
   SaveData,
   EquippedPart,
+  EquippedSkill,
   Rarity,
   PartSlot,
   PartQuality,
@@ -165,7 +166,7 @@ interface GameState {
   };
   canSynthesize: (recipeId: string) => boolean;
 
-  modifySkill: (recipeId: string, skillId: string) => {
+  modifySkill: (recipeId: string, skillTemplateId?: string) => {
     success: boolean;
     skill?: Skill;
     effects?: {
@@ -174,7 +175,7 @@ interface GameState {
       statusEffectChanceBonus?: number;
     };
   };
-  canModifySkill: (recipeId: string, skillId: string) => boolean;
+  canModifySkill: (recipeId: string, skillTemplateId?: string) => boolean;
 
   runExperiment: (experimentId: string) => {
     rewards: {
@@ -392,13 +393,20 @@ export const useGameStore = create<GameState>((set, get) => ({
       { templateId: 'lab_synthesis_dust', count: 10 },
       { templateId: 'lab_synthesis_crystal', count: 5 },
       { templateId: 'lab_synthesis_core', count: 2 },
-      { templateId: 'lab_modification_chip', count: 8 },
-      { templateId: 'lab_modification_processor', count: 4 },
+      { templateId: 'lab_modify_chip', count: 8 },
+      { templateId: 'lab_modify_processor', count: 4 },
+      { templateId: 'lab_modify_ai', count: 2 },
       { templateId: 'lab_experiment_flask', count: 6 },
       { templateId: 'lab_experiment_catalyst', count: 3 },
+      { templateId: 'mat_bt_fire_2', count: 3 },
+      { templateId: 'mat_bt_ice_2', count: 3 },
+      { templateId: 'mat_bt_thunder_3', count: 2 },
+      { templateId: 'mat_bt_nature_2', count: 4 },
     ];
     starterMaterials.forEach(sm => {
-      const template = getLabMaterialTemplate(sm.templateId);
+      const labTemplate = getLabMaterialTemplate(sm.templateId);
+      const stdTemplate = getMaterialTemplate(sm.templateId);
+      const template = labTemplate || stdTemplate;
       if (template) {
         for (let i = 0; i < sm.count; i++) {
           initialMaterials.push({
@@ -409,6 +417,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             emoji: template.emoji,
             rarity: template.rarity,
             type: template.type as MaterialType,
+            element: 'element' in template ? (template as { element?: string }).element as any : undefined,
           });
         }
       }
@@ -876,10 +885,35 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (animal.skills.length >= maxSkillSlots) return false;
     if (animal.skills.some(s => s.skillId === skill.templateId)) return false;
 
+    const origTemplate = getSkillTemplate(skill.templateId);
+    const modifications: EquippedSkill['modifications'] = {};
+    let hasMod = false;
+    if (origTemplate && skill.damage !== origTemplate.damage) {
+      modifications.damageBonus = Math.round((skill.damage / origTemplate.damage - 1) * 100);
+      hasMod = true;
+    }
+    if (origTemplate && skill.cooldown !== origTemplate.cooldown) {
+      modifications.cooldownReduction = origTemplate.cooldown - skill.cooldown;
+      hasMod = true;
+    }
+    if (skill.statusEffect && origTemplate && (!origTemplate.statusEffect || origTemplate.statusEffect.type !== skill.statusEffect.type)) {
+      modifications.addStatusEffect = { ...skill.statusEffect };
+      hasMod = true;
+    } else if (skill.statusEffect && origTemplate?.statusEffect && skill.statusEffect.chance > origTemplate.statusEffect.chance) {
+      modifications.statusEffectChanceBonus = skill.statusEffect.chance - origTemplate.statusEffect.chance;
+      hasMod = true;
+    }
+
+    const equipped: EquippedSkill = {
+      skillId: skill.templateId,
+      level: 1,
+      modifications: hasMod ? modifications : undefined,
+    };
+
     set(state => ({
       ownedAnimals: state.ownedAnimals.map(a =>
         a.id === animalId
-          ? { ...a, skills: [...a.skills, { skillId: skill.templateId, level: 1 }] }
+          ? { ...a, skills: [...a.skills, equipped] }
           : a
       ),
       ownedSkills: state.ownedSkills.filter(s => s.id !== skillId),
@@ -906,8 +940,30 @@ export const useGameStore = create<GameState>((set, get) => ({
     }));
 
     if (origSkill) {
+      const restored: Skill = {
+        ...origSkill,
+        id: generateId('skill'),
+        templateId: origSkill.id,
+      };
+      if (equipped.modifications) {
+        const mod = equipped.modifications;
+        if (mod.damageBonus) {
+          restored.damage = Math.floor(origSkill.damage * (1 + mod.damageBonus / 100));
+        }
+        if (mod.cooldownReduction) {
+          restored.cooldown = Math.max(1, origSkill.cooldown - mod.cooldownReduction);
+        }
+        if (mod.addStatusEffect) {
+          restored.statusEffect = { ...mod.addStatusEffect };
+        } else if (mod.statusEffectChanceBonus && restored.statusEffect) {
+          restored.statusEffect = {
+            ...restored.statusEffect,
+            chance: Math.min(100, restored.statusEffect.chance + mod.statusEffectChanceBonus),
+          };
+        }
+      }
       set(state => ({
-        ownedSkills: [...state.ownedSkills, { ...origSkill, id: generateId('skill'), templateId: origSkill.id }],
+        ownedSkills: [...state.ownedSkills, restored],
       }));
     }
 
@@ -1953,14 +2009,16 @@ export const useGameStore = create<GameState>((set, get) => ({
     };
   },
 
-  canModifySkill: (recipeId: string, skillId: string): boolean => {
+  canModifySkill: (recipeId: string, skillTemplateId?: string): boolean => {
     const state = get();
     const recipe = getSkillModificationRecipe(recipeId);
     if (!recipe) return false;
 
-    const skill = state.ownedSkills.find(s => s.id === skillId);
-    if (!skill) return false;
-    if (skill.templateId !== recipe.targetSkillTemplateId) return false;
+    const targetTemplateId = skillTemplateId || recipe.targetSkillTemplateId;
+
+    const inInventory = state.ownedSkills.some(s => s.templateId === targetTemplateId);
+    const equipped = state.ownedAnimals.some(a => a.skills.some(es => es.skillId === targetTemplateId));
+    if (!inInventory && !equipped) return false;
 
     if (state.player.coins < recipe.coinCost) return false;
 
@@ -1972,14 +2030,15 @@ export const useGameStore = create<GameState>((set, get) => ({
     return true;
   },
 
-  modifySkill: (recipeId: string, skillId: string) => {
+  modifySkill: (recipeId: string, skillTemplateId?: string) => {
     const state = get();
     const recipe = getSkillModificationRecipe(recipeId);
     if (!recipe) return { success: false };
-    if (!state.canModifySkill(recipeId, skillId)) return { success: false };
+    const targetTemplateId = skillTemplateId || recipe.targetSkillTemplateId;
+    if (!state.canModifySkill(recipeId, targetTemplateId)) return { success: false };
 
-    const skill = state.ownedSkills.find(s => s.id === skillId);
-    if (!skill) return { success: false };
+    const origTemplate = getSkillTemplate(targetTemplateId);
+    if (!origTemplate) return { success: false };
 
     let materialsToRemove: string[] = [];
     for (const mat of recipe.materials) {
@@ -1998,6 +2057,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       statusEffectChanceBonus?: number;
     } = {};
 
+    const inventorySkill = state.ownedSkills.find(s => s.templateId === targetTemplateId);
+
     if (success) {
       effects = {
         damageBonus: recipe.effects.damageBonus,
@@ -2005,14 +2066,15 @@ export const useGameStore = create<GameState>((set, get) => ({
         statusEffectChanceBonus: recipe.effects.statusEffectChanceBonus,
       };
 
+      const baseSkill = inventorySkill || { ...origTemplate, id: generateId('skill'), templateId: origTemplate.id };
       modifiedSkill = {
-        ...skill,
+        ...baseSkill,
         damage: recipe.effects.damageBonus
-          ? Math.floor(skill.damage * (1 + recipe.effects.damageBonus / 100))
-          : skill.damage,
+          ? Math.floor(baseSkill.damage * (1 + recipe.effects.damageBonus / 100))
+          : baseSkill.damage,
         cooldown: recipe.effects.cooldownReduction
-          ? Math.max(1, skill.cooldown - recipe.effects.cooldownReduction)
-          : skill.cooldown,
+          ? Math.max(1, baseSkill.cooldown - recipe.effects.cooldownReduction)
+          : baseSkill.cooldown,
       };
 
       if (recipe.effects.addStatusEffect && !modifiedSkill.statusEffect) {
@@ -2025,36 +2087,80 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
     }
 
+    const skillName = inventorySkill?.name || origTemplate.name;
+    const skillEmoji = inventorySkill?.emoji || origTemplate.emoji;
+    const skillRarity = inventorySkill?.rarity || origTemplate.rarity;
+
     const logEntry: LabLogEntry = {
       id: generateId('log'),
       timestamp: Date.now(),
       type: 'modification',
       success,
       description: success
-        ? `成功改造 ${skill.name}`
-        : `改造 ${skill.name} 失败`,
+        ? `成功改造 ${skillName}`
+        : `改造 ${skillName} 失败`,
       rewards: success
-        ? [{ type: 'skill', name: skill.name, emoji: skill.emoji, rarity: skill.rarity }]
+        ? [{ type: 'skill', name: skillName, emoji: skillEmoji, rarity: skillRarity }]
         : undefined,
     };
 
-    set(state => ({
-      player: { ...state.player, coins: state.player.coins - recipe.coinCost },
-      ownedMaterials: state.ownedMaterials.filter(m => !materialsToRemove.includes(m.id)),
-      ownedSkills: success && modifiedSkill
-        ? state.ownedSkills.map(s => (s.id === skillId ? modifiedSkill : s))
-        : state.ownedSkills,
-      labData: {
-        ...state.labData,
-        modificationCount: state.labData.modificationCount + 1,
-        successCount: state.labData.successCount + (success ? 1 : 0),
-        failureCount: state.labData.failureCount + (success ? 0 : 1),
-        recentLogs: [
-          logEntry,
-          ...state.labData.recentLogs,
-        ].slice(0, 50),
-      },
-    }));
+    const updateAnimalsWithModifiedSkill = (animals: Animal[]): Animal[] => {
+      return animals.map(a => ({
+        ...a,
+        skills: a.skills.map(es => {
+          if (es.skillId !== targetTemplateId) return es;
+          if (!modifiedSkill) return es;
+
+          const newMod: EquippedSkill['modifications'] = { ...(es.modifications || {}) };
+          if (modifiedSkill.damage !== origTemplate.damage) {
+            newMod.damageBonus = Math.round((modifiedSkill.damage / origTemplate.damage - 1) * 100);
+          } else {
+            delete newMod.damageBonus;
+          }
+          if (modifiedSkill.cooldown !== origTemplate.cooldown) {
+            newMod.cooldownReduction = origTemplate.cooldown - modifiedSkill.cooldown;
+          } else {
+            delete newMod.cooldownReduction;
+          }
+          if (modifiedSkill.statusEffect && (!origTemplate.statusEffect || origTemplate.statusEffect.type !== modifiedSkill.statusEffect.type)) {
+            newMod.addStatusEffect = { ...modifiedSkill.statusEffect };
+            delete newMod.statusEffectChanceBonus;
+          } else if (modifiedSkill.statusEffect && origTemplate.statusEffect && modifiedSkill.statusEffect.chance > origTemplate.statusEffect.chance) {
+            newMod.statusEffectChanceBonus = modifiedSkill.statusEffect.chance - origTemplate.statusEffect.chance;
+            delete newMod.addStatusEffect;
+          }
+          return { ...es, modifications: newMod };
+        }),
+      }));
+    };
+
+    set(state => {
+      const update: Partial<GameState> = {
+        player: { ...state.player, coins: state.player.coins - recipe.coinCost },
+        ownedMaterials: state.ownedMaterials.filter(m => !materialsToRemove.includes(m.id)),
+        labData: {
+          ...state.labData,
+          modificationCount: state.labData.modificationCount + 1,
+          successCount: state.labData.successCount + (success ? 1 : 0),
+          failureCount: state.labData.failureCount + (success ? 0 : 1),
+          recentLogs: [
+            logEntry,
+            ...state.labData.recentLogs,
+          ].slice(0, 50),
+        },
+      };
+
+      if (success && modifiedSkill) {
+        if (inventorySkill) {
+          update.ownedSkills = state.ownedSkills.map(s =>
+            s.id === inventorySkill.id ? modifiedSkill : s
+          );
+        }
+        update.ownedAnimals = updateAnimalsWithModifiedSkill(state.ownedAnimals);
+      }
+
+      return update;
+    });
 
     get().saveGame();
 
@@ -2104,6 +2210,25 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (roll <= accumulated) {
         selectedReward = reward;
         break;
+      }
+    }
+
+    const guaranteedRarity = experiment.guaranteedRarity;
+
+    let guaranteeReward: typeof selectedReward | null = null;
+    if (guaranteedRarity && guaranteedRarity >= 2) {
+      const isLowRarityItem = (selectedReward.type === 'part' || selectedReward.type === 'skill')
+        && (selectedReward.rarity || 1) < guaranteedRarity;
+      const isNonItemReward = selectedReward.type === 'coins' || selectedReward.type === 'gems'
+        || selectedReward.type === 'material';
+
+      if (isLowRarityItem || isNonItemReward) {
+        const guaranteedPool = experiment.rewards.filter(
+          r => (r.type === 'part' || r.type === 'skill') && (r.rarity || 1) >= guaranteedRarity
+        );
+        if (guaranteedPool.length > 0) {
+          guaranteeReward = pickRandom(guaranteedPool);
+        }
       }
     }
 
@@ -2219,6 +2344,53 @@ export const useGameStore = create<GameState>((set, get) => ({
           });
         }
         break;
+      }
+    }
+
+    if (guaranteeReward) {
+      const guaranteeRarity = guaranteeReward.rarity || guaranteedRarity!;
+
+      if (guaranteeReward.type === 'part') {
+        const pool = PART_TEMPLATES.filter(p => p.rarity === guaranteeRarity);
+        if (pool.length > 0) {
+          const template = pickRandom(pool);
+          const part: Part = {
+            ...template,
+            id: generateId('part'),
+            templateId: template.id,
+            quality: rollPartQuality(guaranteeRarity),
+            setId: template.setId,
+          };
+          newParts.push(part);
+          rewards.push({
+            type: 'part',
+            name: template.name,
+            emoji: template.emoji,
+            rarity: guaranteeRarity as Rarity,
+            item: part,
+          });
+        }
+      } else if (guaranteeReward.type === 'skill') {
+        let pool = SKILL_TEMPLATES.filter(s => s.rarity === guaranteeRarity);
+        if (pool.length === 0) {
+          pool = SKILL_TEMPLATES.filter(s => s.rarity <= guaranteeRarity);
+        }
+        if (pool.length > 0) {
+          const template = pickRandom(pool);
+          const skill: Skill = {
+            ...template,
+            id: generateId('skill'),
+            templateId: template.id,
+          };
+          newSkills.push(skill);
+          rewards.push({
+            type: 'skill',
+            name: template.name,
+            emoji: template.emoji,
+            rarity: guaranteeRarity as Rarity,
+            item: skill,
+          });
+        }
       }
     }
 

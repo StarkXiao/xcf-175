@@ -41,6 +41,7 @@ import type {
   SkillModificationRecipe,
   ProbabilityExperiment,
   Rarity,
+  EquippedSkill,
 } from '@/types';
 
 type LabTab = 'synthesis' | 'modification' | 'experiment' | 'materials' | 'logs';
@@ -51,6 +52,7 @@ export default function Lab() {
     player,
     ownedParts,
     ownedSkills,
+    ownedAnimals,
     ownedMaterials,
     labData,
     synthesizePart,
@@ -64,7 +66,7 @@ export default function Lab() {
 
   const [activeTab, setActiveTab] = useState<LabTab>('synthesis');
   const [selectedRecipeId, setSelectedRecipeId] = useState<string | null>(null);
-  const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null);
+  const [selectedSkillTemplateId, setSelectedSkillTemplateId] = useState<string | null>(null);
   const [showResult, setShowResult] = useState<{
     type: 'synthesis' | 'modification' | 'experiment';
     success: boolean;
@@ -98,18 +100,18 @@ export default function Lab() {
     });
   };
 
-  const handleModify = (recipeId: string, skillId: string) => {
-    const result = modifySkill(recipeId, skillId);
-    const skill = ownedSkills.find(s => s.id === skillId);
+  const handleModify = (recipeId: string, skillTemplateId: string) => {
+    const result = modifySkill(recipeId, skillTemplateId);
+    const template = getSkillTemplate(skillTemplateId);
 
     setShowResult({
       type: 'modification',
       success: result.success,
       message: result.success
-        ? `成功改造 ${skill?.name || '技能'}！`
+        ? `成功改造 ${template?.name || '技能'}！`
         : `改造失败，材料已消耗`,
-      rewards: result.success && skill
-        ? [{ type: 'skill', name: skill.name, emoji: skill.emoji, rarity: skill.rarity }]
+      rewards: result.success && template
+        ? [{ type: 'skill', name: template.name, emoji: template.emoji, rarity: template.rarity }]
         : undefined,
     });
   };
@@ -291,7 +293,42 @@ export default function Lab() {
   };
 
   const renderModificationTab = () => {
-    const availableSkills = ownedSkills;
+    const allSkillTemplateIds = useMemo(() => {
+      const ids = new Set<string>();
+      ownedSkills.forEach(s => ids.add(s.templateId));
+      ownedAnimals.forEach(a => a.skills.forEach(es => ids.add(es.skillId)));
+      return Array.from(ids);
+    }, [ownedSkills, ownedAnimals]);
+
+    const skillEntries = useMemo(() => {
+      return allSkillTemplateIds.map(templateId => {
+        const template = getSkillTemplate(templateId);
+        if (!template) return null;
+        const recipes = SKILL_MODIFICATION_RECIPES.filter(
+          r => r.targetSkillTemplateId === templateId
+        );
+        if (recipes.length === 0) return null;
+        const inInventory = ownedSkills.some(s => s.templateId === templateId);
+        const equippedAnimal = ownedAnimals.find(a => a.skills.some(es => es.skillId === templateId));
+        const equippedMod = equippedAnimal?.skills.find(es => es.skillId === templateId)?.modifications;
+
+        return {
+          templateId,
+          template,
+          recipes,
+          inInventory,
+          equippedAnimal,
+          equippedMod,
+        };
+      }).filter(Boolean) as {
+        templateId: string;
+        template: NonNullable<ReturnType<typeof getSkillTemplate>>;
+        recipes: SkillModificationRecipe[];
+        inInventory: boolean;
+        equippedAnimal?: typeof ownedAnimals[0];
+        equippedMod?: EquippedSkill['modifications'];
+      }[];
+    }, [allSkillTemplateIds, ownedSkills, ownedAnimals]);
 
     return (
       <div className="space-y-6">
@@ -300,10 +337,10 @@ export default function Lab() {
           技能改造
         </h2>
 
-        {availableSkills.length === 0 ? (
+        {skillEntries.length === 0 ? (
           <Empty
             title="没有可改造的技能"
-            description="去商店抽取技能后再来改造吧！"
+            description="获取技能后再来改造吧！"
             action={
               <NeonButton onClick={() => navigate('/shop')}>
                 前往商店
@@ -315,42 +352,49 @@ export default function Lab() {
             <div className="lg:col-span-1">
               <h3 className="font-cyber font-bold text-sm text-gray-400 mb-3">选择技能</h3>
               <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-2">
-                {availableSkills.map(skill => {
-                  const isSelected = selectedSkillId === skill.id;
-                  const recipes = SKILL_MODIFICATION_RECIPES.filter(
-                    r => r.targetSkillTemplateId === skill.templateId
-                  );
-
+                {skillEntries.map(entry => {
+                  const isSelected = selectedSkillTemplateId === entry.templateId;
                   return (
                     <div
-                      key={skill.id}
+                      key={entry.templateId}
                       className={cn(
                         'p-3 rounded-lg border cursor-pointer transition-all',
                         isSelected
                           ? 'border-cyber-purple/50 bg-cyber-purple/10'
                           : 'border-gray-700 bg-cyber-darker hover:border-gray-500'
                       )}
-                      onClick={() => setSelectedSkillId(isSelected ? null : skill.id)}
+                      onClick={() => setSelectedSkillTemplateId(isSelected ? null : entry.templateId)}
                     >
                       <div className="flex items-center gap-3">
                         <div
                           className="w-12 h-12 rounded-lg flex items-center justify-center text-2xl flex-shrink-0"
                           style={{
-                            border: `2px solid ${getRarityColor(skill.rarity)}`,
-                            boxShadow: `0 0 8px ${getRarityColor(skill.rarity)}40`,
+                            border: `2px solid ${getRarityColor(entry.template.rarity)}`,
+                            boxShadow: `0 0 8px ${getRarityColor(entry.template.rarity)}40`,
                           }}
                         >
-                          {skill.emoji}
+                          {entry.template.emoji}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div
                             className="font-cyber font-bold text-sm truncate"
-                            style={{ color: getRarityColor(skill.rarity) }}
+                            style={{ color: getRarityColor(entry.template.rarity) }}
                           >
-                            {skill.name}
+                            {entry.template.name}
                           </div>
                           <div className="text-xs text-gray-500">
-                            伤害: {skill.damage} | CD: {skill.cooldown}
+                            伤害: {entry.template.damage}
+                            {entry.equippedMod?.damageBonus && (
+                              <span className="text-cyber-red"> +{entry.equippedMod.damageBonus}%</span>
+                            )}
+                            {' | '}CD: {entry.template.cooldown}
+                            {entry.equippedMod?.cooldownReduction && (
+                              <span className="text-cyber-cyan"> -{entry.equippedMod.cooldownReduction}</span>
+                            )}
+                          </div>
+                          <div className="text-[10px] text-gray-600 mt-0.5">
+                            {entry.inInventory ? '📦 库存中' : ''}
+                            {entry.equippedAnimal ? `⚔️ ${entry.equippedAnimal.name}` : ''}
                           </div>
                         </div>
                         <ChevronRight className={cn(
@@ -358,11 +402,9 @@ export default function Lab() {
                           isSelected ? 'text-cyber-purple' : 'text-gray-600'
                         )} />
                       </div>
-                      {recipes.length > 0 && (
-                        <div className="mt-2 text-[10px] text-cyber-purple">
-                          {recipes.length} 个改造方案
-                        </div>
-                      )}
+                      <div className="mt-2 text-[10px] text-cyber-purple">
+                        {entry.recipes.length} 个改造方案
+                      </div>
                     </div>
                   );
                 })}
@@ -370,26 +412,14 @@ export default function Lab() {
             </div>
 
             <div className="lg:col-span-2">
-              {selectedSkillId ? (
+              {selectedSkillTemplateId ? (
                 <div className="space-y-4">
                   {(() => {
-                    const skill = ownedSkills.find(s => s.id === selectedSkillId);
-                    if (!skill) return null;
-                    const recipes = SKILL_MODIFICATION_RECIPES.filter(
-                      r => r.targetSkillTemplateId === skill.templateId
-                    );
+                    const entry = skillEntries.find(e => e.templateId === selectedSkillTemplateId);
+                    if (!entry) return null;
 
-                    if (recipes.length === 0) {
-                      return (
-                        <Empty
-                          title="暂无改造方案"
-                          description="该技能暂时没有可用的改造方案"
-                        />
-                      );
-                    }
-
-                    return recipes.map(recipe => {
-                      const canDo = canModifySkill(recipe.id, skill.id);
+                    return entry.recipes.map(recipe => {
+                      const canDo = canModifySkill(recipe.id, selectedSkillTemplateId);
 
                       return (
                         <NeonCard key={recipe.id} variant="purple" className="p-5">
@@ -488,7 +518,7 @@ export default function Lab() {
                             size="sm"
                             fullWidth
                             disabled={!canDo}
-                            onClick={() => handleModify(recipe.id, skill.id)}
+                            onClick={() => handleModify(recipe.id, selectedSkillTemplateId)}
                           >
                             <Zap className="w-4 h-4 mr-2" />
                             开始改造
@@ -617,11 +647,11 @@ export default function Lab() {
                   </div>
                 </div>
 
-                {exp.guaranteedRarity && (
+                {exp.guaranteedRarity && exp.guaranteedRarity >= 2 && (
                   <div className="mb-4 p-2 rounded bg-cyber-yellow/10 border border-cyber-yellow/30">
                     <div className="text-xs text-cyber-yellow font-cyber flex items-center gap-1">
                       <Star className="w-3 h-3" />
-                      保底: {getRarityStars(exp.guaranteedRarity)} 以上
+                      保底: 必定获得 {getRarityStars(exp.guaranteedRarity)}+ 部件或技能
                     </div>
                   </div>
                 )}

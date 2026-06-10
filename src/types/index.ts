@@ -249,6 +249,17 @@ export interface EquippedSkill {
   level: number;
   currentCooldown?: number;
   branchId?: string;
+  modifications?: {
+    damageBonus?: number;
+    cooldownReduction?: number;
+    statusEffectChanceBonus?: number;
+    addStatusEffect?: {
+      type: StatusEffectType;
+      chance: number;
+      duration: number;
+      damage?: number;
+    };
+  };
 }
 
 export interface Animal {

@@ -252,6 +252,25 @@ export default function Skills() {
                       ? template.branches?.find(b => b.id === equipped.branchId)
                       : null;
 
+                    const displayDamage = (() => {
+                      let base = activeBranch?.damageModifier ? Math.floor(template.damage * activeBranch.damageModifier) : template.damage;
+                      if (equipped.modifications?.damageBonus) {
+                        base = Math.floor(base * (1 + equipped.modifications.damageBonus / 100));
+                      }
+                      return base;
+                    })();
+                    const displayCooldown = (() => {
+                      let base = activeBranch?.cooldownModifier ? template.cooldown + activeBranch.cooldownModifier : template.cooldown;
+                      if (equipped.modifications?.cooldownReduction) {
+                        base = Math.max(1, base - equipped.modifications.cooldownReduction);
+                      }
+                      return base;
+                    })();
+                    const displayStatusEffect = equipped.modifications?.addStatusEffect
+                      ? equipped.modifications.addStatusEffect
+                      : (activeBranch?.statusEffectOverride || template.statusEffect);
+                    const hasModifications = !!equipped.modifications;
+
                     return (
                       <NeonCard key={index} className="p-4">
                         <div className="flex items-center gap-4">
@@ -264,6 +283,11 @@ export default function Skills() {
                               <span className={`text-xs px-2 py-0.5 rounded font-bold ${isMaxLevel ? 'bg-cyber-yellow/20 text-cyber-yellow' : 'bg-cyber-pink/20 text-cyber-pink'}`}>
                                 Lv.{equipped.level}{isMaxLevel ? ' MAX' : `/${skillLevelCap}`}
                               </span>
+                              {hasModifications && (
+                                <span className="text-xs px-2 py-0.5 rounded font-bold bg-cyber-purple/20 text-cyber-purple border border-cyber-purple/40">
+                                  ⚡改造
+                                </span>
+                              )}
                               {template.element && (
                                 <span
                                   className="text-xs px-2 py-0.5 rounded flex items-center gap-1"
@@ -283,15 +307,15 @@ export default function Skills() {
                               {activeBranch ? activeBranch.description : template.description}
                             </p>
                             <div className="flex gap-4 mt-2 text-xs text-gray-500">
-                              <span>伤害: {activeBranch?.damageModifier ? Math.floor(template.damage * activeBranch.damageModifier) : template.damage}</span>
-                              <span>CD: {activeBranch?.cooldownModifier ? template.cooldown + activeBranch.cooldownModifier : template.cooldown}回合</span>
-                              {(template.statusEffect || activeBranch?.statusEffectOverride) && (
+                              <span>伤害: {displayDamage}{equipped.modifications?.damageBonus && <span className="text-cyber-purple"> (+{equipped.modifications.damageBonus}%)</span>}</span>
+                              <span>CD: {displayCooldown}回合{equipped.modifications?.cooldownReduction && <span className="text-cyber-cyan"> (-{equipped.modifications.cooldownReduction})</span>}</span>
+                              {displayStatusEffect && (
                                 <span
-                                  style={{ color: STATUS_EFFECT_CONFIG[(activeBranch?.statusEffectOverride || template.statusEffect)!?.type].color }}
+                                  style={{ color: STATUS_EFFECT_CONFIG[displayStatusEffect.type].color }}
                                 >
-                                  {STATUS_EFFECT_CONFIG[(activeBranch?.statusEffectOverride || template.statusEffect)!?.type].emoji}{' '}
-                                  {STATUS_EFFECT_CONFIG[(activeBranch?.statusEffectOverride || template.statusEffect)!?.type].name}{' '}
-                                  {(activeBranch?.statusEffectOverride || template.statusEffect)!?.chance}%
+                                  {STATUS_EFFECT_CONFIG[displayStatusEffect.type].emoji}{' '}
+                                  {STATUS_EFFECT_CONFIG[displayStatusEffect.type].name}{' '}
+                                  {displayStatusEffect.chance}%
                                 </span>
                               )}
                             </div>
