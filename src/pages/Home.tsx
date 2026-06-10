@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router';
-import { Swords, Users, BookOpen, ShoppingBag, Trophy, Sparkles, Star, TrendingUp, TrendingDown, Zap, Clock, ChevronRight, Crown } from 'lucide-react';
+import { Swords, Users, BookOpen, ShoppingBag, Trophy, Sparkles, Star, TrendingUp, TrendingDown, Zap, Clock, ChevronRight, Crown, Map } from 'lucide-react';
 import { NeonButton } from '@/components/NeonButton';
 import { NeonCard } from '@/components/NeonCard';
 import { MiniChart } from '@/components/MiniChart';
@@ -66,18 +66,18 @@ export default function Home() {
         frequentLineupCount: 0,
       };
     }
-    const lineupCount = new Map<string, { ids: string[]; count: number }>();
+    const lineupCount: Record<string, { ids: string[]; count: number }> = {};
     battleHistory.forEach(b => {
       const key = [...b.playerLineup].sort().join(',');
-      const existing = lineupCount.get(key);
+      const existing = lineupCount[key];
       if (existing) {
         existing.count++;
       } else {
-        lineupCount.set(key, { ids: [...b.playerLineup], count: 1 });
+        lineupCount[key] = { ids: [...b.playerLineup], count: 1 };
       }
     });
     let best: { ids: string[]; count: number } | null = null;
-    lineupCount.forEach(entry => {
+    Object.values(lineupCount).forEach(entry => {
       if (!best || entry.count > best.count) best = entry;
     });
     if (!best || best.ids.length === 0) {
@@ -418,6 +418,13 @@ export default function Home() {
 
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           {[
+            {
+              icon: Map,
+              title: '剧情闯关',
+              desc: '探索霓虹都市，挑战关卡，解锁丰厚首通奖励',
+              action: () => navigate('/story'),
+              color: 'cyan' as const,
+            },
             {
               icon: Users,
               title: '阵容编辑',

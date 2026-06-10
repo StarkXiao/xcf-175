@@ -23,6 +23,7 @@ import type {
   StarLevel,
   BreakthroughTier,
   DynamicDifficultyTier,
+  StorySaveData,
 } from '@/types';
 import { ANIMAL_TEMPLATES } from '@/data/animals';
 import { PART_TEMPLATES } from '@/data/parts';
@@ -70,6 +71,7 @@ interface GameState {
   pityState: PityState;
   gachaRecords: GachaRecord[];
   limitedPool: LimitedPoolConfig;
+  storyData: StorySaveData | null;
   isLoading: boolean;
   isNewPlayer: boolean;
   isInitialized: boolean;
@@ -298,6 +300,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   pityState: { ...DEFAULT_PITY_STATE },
   gachaRecords: [],
   limitedPool: { ...LIMITED_POOL },
+  storyData: null,
   isLoading: true,
   isNewPlayer: false,
   isInitialized: false,
@@ -349,6 +352,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       pityState: { ...DEFAULT_PITY_STATE },
       gachaRecords: [],
       limitedPool: { ...LIMITED_POOL },
+      storyData: null,
       isLoading: false,
       isNewPlayer: true,
       isInitialized: true,
@@ -432,6 +436,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       pityState,
       gachaRecords: data.gachaRecords || [],
       limitedPool: data.limitedPool || { ...LIMITED_POOL },
+      storyData: data.storyData || null,
       isLoading: false,
       isNewPlayer: false,
       isInitialized: true,
@@ -458,6 +463,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       pityState: state.pityState,
       gachaRecords: state.gachaRecords.slice(-200),
       limitedPool: state.limitedPool,
+      storyData: state.storyData || undefined,
     };
 
     if (force) {
@@ -492,6 +498,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       pityState: { ...DEFAULT_PITY_STATE },
       gachaRecords: [],
       limitedPool: { ...LIMITED_POOL },
+      storyData: null,
       isLoading: true,
       isNewPlayer: false,
       isInitialized: false,

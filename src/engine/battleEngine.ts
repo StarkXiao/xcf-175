@@ -40,6 +40,7 @@ import {
 
 interface PassiveContext {
   attacker?: BattleUnit;
+  target?: BattleUnit;
   damage?: number;
   isCrit?: boolean;
   statusApplied?: { type: StatusEffectType; chance: number; duration: number; damage?: number };
@@ -58,6 +59,7 @@ interface ActionResult {
   logs: BattleLogEntry[];
   targets: TargetResult[];
   skillUsed: BattleSkill | null;
+  extraTurn?: boolean;
 }
 
 export const calculateAnimalStats = (animal: Animal): {
@@ -1599,5 +1601,258 @@ export const simulateFullBattle = (
     opponentAvatar: opponent.avatar,
     effectiveDifficulty,
     rewardMultiplier: effectiveRewardMultiplier,
+  };
+};
+
+export interface CustomEnemyBattleConfig {
+  enemyAnimals: Animal[];
+  enemyLineupConfig: {
+    animals: { animalId: string; position: FormationPosition; targetStrategy: TargetStrategy }[];
+    actionPriority: ActionPriority;
+  };
+}
+
+export const simulateFullBattleWithCustomEnemies = (
+  playerAnimals: Animal[],
+  betAmount: number,
+  lineupConfig: LineupConfig | undefined,
+  customEnemyConfig: CustomEnemyBattleConfig
+): {
+  playerUnits: BattleUnit[];
+  enemyUnits: BattleUnit[];
+  initialPlayerUnits: BattleUnit[];
+  initialEnemyUnits: BattleUnit[];
+  battleLog: BattleLogEntry[];
+  isWin: boolean;
+  reward: number;
+} => {
+  const { enemyAnimals, enemyLineupConfig } = customEnemyConfig;
+
+  const config = lineupConfig || { animals: [], actionPriority: 'speedFirst' as ActionPriority };
+
+  const playerUnits = playerAnimals.map((animal, i) => {
+    const animalConfig = config.animals.find(c => c.animalId === animal.id);
+    const formationPos = animalConfig?.position || (i === 0 ? 'front' : i === 1 ? 'mid' : 'back') as FormationPosition;
+    const targetStrat = animalConfig?.targetStrategy || 'lowestHp' as TargetStrategy;
+    return createBattleUnit(animal, 'player', i, formationPos, targetStrat);
+  });
+
+  const enemyUnits = enemyAnimals.map((animal, i) => {
+    const enemyConfig = enemyLineupConfig.animals.find(c => c.animalId === animal.id);
+    const formationPos = enemyConfig?.position || 'mid';
+    const targetStrat = enemyConfig?.targetStrategy || 'lowestHp';
+    return createBattleUnit(animal, 'enemy', i, formationPos, targetStrat);
+  });
+
+  const initialPlayerUnits = JSON.parse(JSON.stringify(playerUnits));
+  const initialEnemyUnits = JSON.parse(JSON.stringify(enemyUnits));
+
+  const fullBattleLog: BattleLogEntry[] = [];
+  let turn = 0;
+
+  const processUnitAction = (unit: BattleUnit): boolean => {
+    if (!unit.isAlive) return false;
+    if (!isTeamAlive(playerUnits) || !isTeamAlive(enemyUnits)) return false;
+
+    let extraTurn = false;
+
+    const preBuffResult = processPassives(unit, 'onAttack', playerUnits, enemyUnits, { buffPhase: true });
+    fullBattleLog.push(...preBuffResult.logs);
+    extraTurn = extraTurn || preBuffResult.extraTurn;
+
+    const skill = selectSkillForUnit(unit);
+    let actionResult: ActionResult;
+
+    if (skill) {
+      const target = selectTarget(unit, playerUnits, enemyUnits, skill);
+      if (target) {
+        actionResult = executeSkill(unit, target, skill, playerUnits, enemyUnits);
+      } else {
+        actionResult = executeBasicAttack(unit, playerUnits, enemyUnits);
+      }
+    } else {
+      actionResult = executeBasicAttack(unit, playerUnits, enemyUnits);
+    }
+
+    fullBattleLog.push(...actionResult.logs);
+
+    const allUnits = [...playerUnits, ...enemyUnits];
+    const totalDamage = actionResult.targets.reduce((sum, tr) => sum + tr.damage, 0);
+    const anyCrit = actionResult.targets.some(tr => tr.isCrit);
+
+    for (const tr of actionResult.targets) {
+      if (tr.damage <= 0) continue;
+      const target = allUnits.find(u => u.id === tr.targetId);
+      if (!target) continue;
+
+      const hitResult = processPassives(target, 'onHit', playerUnits, enemyUnits, {
+        attacker: unit,
+        damage: tr.damage,
+        isCrit: tr.isCrit,
+      });
+      fullBattleLog.push(...hitResult.logs);
+      extraTurn = extraTurn || hitResult.extraTurn;
+
+      const targetAllies = (target.side === 'player' ? playerUnits : enemyUnits)
+        .filter(u => u.isAlive && u.id !== target.id);
+      for (const ally of targetAllies) {
+        const allyHitResult = processPassives(ally, 'onAllyHit', playerUnits, enemyUnits, {
+          attacker: unit,
+          damage: tr.damage,
+        });
+        fullBattleLog.push(...allyHitResult.logs);
+        extraTurn = extraTurn || allyHitResult.extraTurn;
+      }
+
+      if (tr.isCrit) {
+        const critResult = processPassives(unit, 'onCrit', playerUnits, enemyUnits, {
+          damage: tr.damage,
+          isCrit: true,
+        });
+        fullBattleLog.push(...critResult.logs);
+        extraTurn = extraTurn || critResult.extraTurn;
+      }
+
+      if (target.isAlive) {
+        const hpBelowResult = processPassives(target, 'onHpBelow', playerUnits, enemyUnits, {
+          attacker: unit,
+          damage: tr.damage,
+        });
+        fullBattleLog.push(...hpBelowResult.logs);
+        extraTurn = extraTurn || hpBelowResult.extraTurn;
+      }
+
+      if (tr.killed) {
+        const killResult = processPassives(unit, 'onKill', playerUnits, enemyUnits);
+        fullBattleLog.push(...killResult.logs);
+        extraTurn = extraTurn || killResult.extraTurn;
+      }
+    }
+
+    if (totalDamage > 0) {
+      const reactResult = processPassives(unit, 'onAttack', playerUnits, enemyUnits, {
+        buffPhase: false,
+        damage: totalDamage,
+        isCrit: anyCrit,
+      });
+      fullBattleLog.push(...reactResult.logs);
+      extraTurn = extraTurn || reactResult.extraTurn;
+    }
+
+    for (const tr of actionResult.targets) {
+      if (tr.statusApplied) {
+        const statusResult = processPassives(unit, 'onStatusApply', playerUnits, enemyUnits, {
+          statusApplied: tr.statusApplied,
+        });
+        fullBattleLog.push(...statusResult.logs);
+        extraTurn = extraTurn || statusResult.extraTurn;
+      }
+    }
+
+    if (actionResult.skillUsed) {
+      const comboLogs = checkComboTriggers(unit, actionResult.skillUsed, playerUnits, enemyUnits);
+      fullBattleLog.push(...comboLogs);
+    }
+
+    return extraTurn;
+  };
+
+  while (
+    isTeamAlive(playerUnits) &&
+    isTeamAlive(enemyUnits) &&
+    turn < BATTLE_CONSTANTS.MAX_BATTLE_TURNS
+  ) {
+    turn++;
+    resetComboCounts([...playerUnits, ...enemyUnits]);
+
+    const allTurnUnits = [...playerUnits, ...enemyUnits];
+    for (const unit of allTurnUnits) {
+      if (!unit.isAlive) continue;
+      const { logs: startLogs, extraTurn: startExtra } = processPassives(unit, 'onTurnStart', playerUnits, enemyUnits);
+      fullBattleLog.push(...startLogs);
+      if (startExtra) {
+        processUnitAction(unit);
+      }
+    }
+
+    const statusLogs = processStatusEffects([...playerUnits, ...enemyUnits]);
+    fullBattleLog.push(...statusLogs);
+
+    for (const unit of [...playerUnits, ...enemyUnits]) {
+      if (!unit.isAlive) continue;
+      const hpBelowResult = processPassives(unit, 'onHpBelow', playerUnits, enemyUnits);
+      fullBattleLog.push(...hpBelowResult.logs);
+    }
+
+    if (!isTeamAlive(playerUnits) || !isTeamAlive(enemyUnits)) break;
+
+    const actionOrder = getActionOrder([...playerUnits, ...enemyUnits], config.actionPriority);
+
+    for (const unit of actionOrder) {
+      if (!unit.isAlive) continue;
+      if (!isTeamAlive(playerUnits) || !isTeamAlive(enemyUnits)) break;
+
+      if (checkSkipTurn(unit)) {
+        const skipStatus = unit.statusEffects
+          .filter(se => STATUS_EFFECT_CONFIG[se.type].skipTurnChance > 0)
+          .find(() => true);
+        const skipConfig = skipStatus ? STATUS_EFFECT_CONFIG[skipStatus.type] : null;
+        fullBattleLog.push({
+          timestamp: Date.now(),
+          type: 'statusTick',
+          targetId: unit.id,
+          targetName: unit.name,
+          statusType: skipStatus?.type,
+          statusRemainingTurns: skipStatus?.remainingTurns,
+          isSkipTurn: true,
+          statusEffectData: skipStatus ? {
+            type: skipStatus.type,
+            remainingTurns: skipStatus.remainingTurns,
+            damage: skipStatus.damage,
+            sourceId: skipStatus.sourceId,
+            skipTurnChance: skipConfig?.skipTurnChance || 0,
+          } : undefined,
+          message: `${skipConfig?.emoji || '⏸'} ${unit.name} 因${skipConfig?.name || '异常状态'}无法行动！`,
+        });
+        continue;
+      }
+
+      const extraTurn = processUnitAction(unit);
+
+      if (extraTurn && unit.isAlive && isTeamAlive(playerUnits) && isTeamAlive(enemyUnits)) {
+        processUnitAction(unit);
+      }
+    }
+
+    for (const unit of [...playerUnits, ...enemyUnits]) {
+      if (!unit.isAlive) continue;
+      const { logs: endLogs } = processPassives(unit, 'onTurnEnd', playerUnits, enemyUnits);
+      fullBattleLog.push(...endLogs);
+    }
+
+    updateCooldowns([...playerUnits, ...enemyUnits]);
+  }
+
+  const isWin = isTeamAlive(playerUnits) && !isTeamAlive(enemyUnits);
+  const reward = isWin ? Math.floor(betAmount * 1.5) : 0;
+
+  fullBattleLog.push({
+    timestamp: Date.now(),
+    type: 'victory',
+    sourceId: isWin ? 'player' : 'enemy',
+    sourceName: isWin ? '玩家' : '对手',
+    message: isWin
+      ? `🎉 胜利！获得 ${reward} 货币奖励！`
+      : `💔 失败...失去 ${betAmount} 货币。`,
+  });
+
+  return {
+    playerUnits,
+    enemyUnits,
+    initialPlayerUnits,
+    initialEnemyUnits,
+    battleLog: fullBattleLog,
+    isWin,
+    reward,
   };
 };

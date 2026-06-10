@@ -509,6 +509,7 @@ export interface SaveData {
   limitedPool?: LimitedPoolConfig;
   seasonData?: SeasonSaveData;
   guildData?: GuildExpeditionSaveData;
+  storyData?: StorySaveData;
 }
 
 export interface SeasonSaveData {
@@ -841,4 +842,94 @@ export interface GuildExpeditionSaveData {
   currentWeekId: string;
   contributionHistory: GuildContributionRecord[];
   lastSettlementTime: number;
+}
+
+export interface StageDrop {
+  type: 'coins' | 'gems' | 'material' | 'animal' | 'part' | 'skill';
+  templateId?: string;
+  amount: number;
+  dropRate: number;
+}
+
+export interface StageFirstClearReward {
+  type: 'coins' | 'gems' | 'material' | 'animal' | 'part' | 'skill';
+  templateId?: string;
+  amount: number;
+}
+
+export interface StageEnemy {
+  animalTemplateId: string;
+  level: number;
+  starLevel: StarLevel;
+  breakthroughTier: BreakthroughTier;
+  skills: string[];
+  parts?: string[];
+}
+
+export interface StageTemplate {
+  id: string;
+  chapterId: string;
+  stageNumber: number;
+  name: string;
+  description: string;
+  emoji: string;
+  difficulty: 'easy' | 'normal' | 'hard' | 'boss';
+  requiredStageId?: string;
+  enemies: StageEnemy[];
+  formationPosition: FormationPosition[];
+  drops: StageDrop[];
+  firstClearRewards: StageFirstClearReward[];
+  staminaCost: number;
+  backgroundTheme?: string;
+  narrative?: string;
+}
+
+export interface ChapterTemplate {
+  id: string;
+  chapterNumber: number;
+  name: string;
+  subtitle: string;
+  description: string;
+  emoji: string;
+  backgroundImage?: string;
+  requiredCompletedStages?: number;
+  stages: StageTemplate[];
+}
+
+export interface StageProgress {
+  stageId: string;
+  completed: boolean;
+  firstCleared: boolean;
+  clearedAt?: number;
+  bestTime?: number;
+  attempts: number;
+  totalClears: number;
+}
+
+export interface ChapterProgress {
+  chapterId: string;
+  unlocked: boolean;
+  unlockedAt?: number;
+  stages: Record<string, StageProgress>;
+  totalStars: number;
+}
+
+export interface StorySaveData {
+  currentChapterId: string;
+  chapters: Record<string, ChapterProgress>;
+  totalStamina: number;
+  maxStamina: number;
+  lastStaminaRegenTime: number;
+  storyNarrativeProgress: Record<string, number>;
+}
+
+export interface StageBattleResult {
+  isWin: boolean;
+  rewards: {
+    type: string;
+    templateId?: string;
+    amount: number;
+    isFirstClear: boolean;
+  }[];
+  battleRecordId?: string;
 }
