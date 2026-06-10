@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { Swords, ArrowLeft, FastForward, Pause, Play, Flame, TrendingUp, AlertTriangle } from 'lucide-react';
+import { Swords, ArrowLeft, FastForward, Pause, Play, Flame, TrendingUp, AlertTriangle, Target } from 'lucide-react';
 import { NeonButton } from '@/components/NeonButton';
 import { NeonCard } from '@/components/NeonCard';
 import { BattleUnitDisplay } from '@/components/BattleUnitDisplay';
@@ -9,10 +9,16 @@ import { useGameStore } from '@/store/useGameStore';
 import { useBattleStore } from '@/store/useBattleStore';
 import { useSeasonStore } from '@/store/useSeasonStore';
 import { BATTLE_CONSTANTS } from '@/engine/constants';
-import type { BattleLogEntry } from '@/types';
+import type { BattleLogEntry, MatchmakingResult } from '@/types';
 import { getRarityColor } from '@/utils/format';
 import { computePlayerStrengthScore, computeLineupSignature, calculateDynamicDifficulty, DYNAMIC_TIER_NAMES, DYNAMIC_TIER_EMOJIS, DYNAMIC_TIER_COLORS } from '@/data/opponents';
-import { formatRankDisplay, getRankColor } from '@/data/seasons';
+import { formatRankDisplay, getRankColor, getRankEmoji } from '@/data/seasons';
+
+const MATCH_QUALITY_LABELS: Record<MatchmakingResult['matchQuality'], { text: string; color: string }> = {
+  fair: { text: '势均力敌', color: '#ffcc00' },
+  advantage: { text: '实力占优', color: '#44cc44' },
+  challenge: { text: '强敌挑战', color: '#ff4444' },
+};
 
 export default function Battle() {
   const navigate = useNavigate();
@@ -322,6 +328,28 @@ export default function Battle() {
                     </div>
                   </NeonCard>
                 )}
+                {battleRecord.matchmaking && (() => {
+                  const mm = battleRecord.matchmaking!;
+                  const qi = MATCH_QUALITY_LABELS[mm.matchQuality];
+                  return (
+                    <NeonCard className="mb-4 p-3 inline-block">
+                      <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-1">
+                          <Target className="w-4 h-4" style={{ color: qi.color }} />
+                          <span className="text-sm font-cyber font-bold" style={{ color: qi.color }}>
+                            {qi.text}
+                          </span>
+                        </div>
+                        <div className="text-xs text-gray-400">
+                          对手: {getRankEmoji(mm.opponentTier)} {formatRankDisplay(mm.opponentTier, mm.opponentSubTier)}
+                        </div>
+                        <div className="text-xs text-gray-400">
+                          积分加成 ×{mm.pointBonus.toFixed(1)}
+                        </div>
+                      </div>
+                    </NeonCard>
+                  );
+                })()}
                 <div className="flex gap-4 justify-center">
                   <NeonButton onClick={() => navigate('/replay')}>
                     查看回放

@@ -448,6 +448,7 @@ export interface BattleRecord {
   enemyUnits: BattleUnit[];
   initialPlayerUnits: BattleUnit[];
   initialEnemyUnits: BattleUnit[];
+  matchmaking?: MatchmakingResult;
 }
 
 export interface Particle {

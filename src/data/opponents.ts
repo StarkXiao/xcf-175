@@ -255,11 +255,14 @@ export const calculateDynamicDifficulty = (
 
 export const generateDynamicEnemyTeam = (
   context: DynamicOpponentContext,
+  opponentDifficultyOverride?: 'easy' | 'normal' | 'hard',
 ): DynamicEnemyTeamResult => {
   const { playerAvgLevel, difficultyMultiplier, difficultyTier } = context;
 
   let opponentBaseDifficulty: OpponentTemplate['difficulty'];
-  if (difficultyTier === 'trivial' || difficultyTier === 'easy') {
+  if (opponentDifficultyOverride) {
+    opponentBaseDifficulty = opponentDifficultyOverride;
+  } else if (difficultyTier === 'trivial' || difficultyTier === 'easy') {
     opponentBaseDifficulty = 'easy';
   } else if (difficultyTier === 'normal') {
     opponentBaseDifficulty = 'normal';

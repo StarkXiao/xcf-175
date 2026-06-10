@@ -295,6 +295,29 @@ export const calculateMatchmaking = (
   };
 };
 
+export const getMatchmakingDifficultyModifier = (
+  matchmaking: MatchmakingResult,
+): { difficultyOffset: number; opponentDifficulty: 'easy' | 'normal' | 'hard' } => {
+  const tierIdx = getTierIndex(matchmaking.opponentTier);
+  let opponentDifficulty: 'easy' | 'normal' | 'hard';
+  if (tierIdx <= 1) {
+    opponentDifficulty = 'easy';
+  } else if (tierIdx <= 3) {
+    opponentDifficulty = 'normal';
+  } else {
+    opponentDifficulty = 'hard';
+  }
+
+  let difficultyOffset = 0;
+  if (matchmaking.matchQuality === 'challenge') {
+    difficultyOffset = 0.15 + (tierIdx - 3) * 0.05;
+  } else if (matchmaking.matchQuality === 'advantage') {
+    difficultyOffset = -0.1;
+  }
+
+  return { difficultyOffset, opponentDifficulty };
+};
+
 export const calculateRankChange = (
   currentRank: RankInfo,
   isWin: boolean,

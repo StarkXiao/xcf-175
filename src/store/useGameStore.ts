@@ -40,6 +40,7 @@ import { GACHA_RATES, GACHA_COSTS, BATTLE_CONSTANTS, NEWBIE_GIFT, PITY_CONFIG, L
 import { simulateFullBattle } from '@/engine/battleEngine';
 import { getAnimalTemplate } from '@/data/animals';
 import { getPartTemplate, rollPartQuality, QUALITY_REFINE_COST } from '@/data/parts';
+import { getMatchmakingDifficultyModifier } from '@/data/seasons';
 import { getSkillTemplate } from '@/data/skills';
 import { MATERIAL_TEMPLATES, getMaterialTemplate } from '@/data/materials';
 import { getStarUpCost, getBreakthroughCost, getSkillSlotsForStar, getSkillLevelCapForBreakthrough, BATTLE_MATERIAL_DROPS } from '@/data/ascendConfig';
@@ -1366,7 +1367,25 @@ export const useGameStore = create<GameState>((set, get) => ({
       recentSigs,
     );
 
-    const result = simulateFullBattle(lineupAnimals, betAmount, state.lineupConfig, dynamicContext);
+    const seasonStore = useSeasonStore.getState();
+    if (!seasonStore.lastMatchmaking) {
+      seasonStore.startMatchmaking();
+    }
+    const matchmaking = seasonStore.lastMatchmaking!;
+
+    const { difficultyOffset, opponentDifficulty } = getMatchmakingDifficultyModifier(matchmaking);
+    dynamicContext.difficultyMultiplier = Math.round((dynamicContext.difficultyMultiplier + difficultyOffset) * 100) / 100;
+    dynamicContext.rewardMultiplier = Math.round((dynamicContext.rewardMultiplier + difficultyOffset * 0.5) * 100) / 100;
+
+    if (dynamicContext.difficultyMultiplier >= 1.5) {
+      dynamicContext.difficultyTier = 'nightmare';
+    } else if (dynamicContext.difficultyMultiplier >= 1.3) {
+      dynamicContext.difficultyTier = 'extreme';
+    } else if (dynamicContext.difficultyMultiplier >= 1.1) {
+      dynamicContext.difficultyTier = 'hard';
+    }
+
+    const result = simulateFullBattle(lineupAnimals, betAmount, state.lineupConfig, dynamicContext, opponentDifficulty);
 
     const battleRecord: BattleRecord = {
       id: generateBattleId(),
@@ -1383,6 +1402,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       enemyUnits: result.enemyUnits,
       initialPlayerUnits: result.initialPlayerUnits,
       initialEnemyUnits: result.initialEnemyUnits,
+      matchmaking,
     };
 
     set(prev => ({
@@ -1433,10 +1453,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
 
     const newWinStreak = result.isWin ? state.player.currentWinStreak + 1 : 0;
-    const seasonStore = useSeasonStore.getState();
-    if (!seasonStore.lastMatchmaking) {
-      seasonStore.startMatchmaking();
-    }
     seasonStore.processBattleResult(result.isWin, newWinStreak, dynamicContext.difficultyTier, result.opponentName, result.opponentAvatar);
     seasonStore.checkSeasonReset();
 

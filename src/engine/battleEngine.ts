@@ -251,9 +251,9 @@ export const createEnemyAnimal = (templateId: string, level: number, rarity: num
   };
 };
 
-export const generateEnemyTeam = (playerAvgLevel: number, dynamicContext?: DynamicOpponentContext) => {
+export const generateEnemyTeam = (playerAvgLevel: number, dynamicContext?: DynamicOpponentContext, opponentDifficultyOverride?: 'easy' | 'normal' | 'hard') => {
   if (dynamicContext) {
-    const result = generateDynamicEnemyTeam(dynamicContext);
+    const result = generateDynamicEnemyTeam(dynamicContext, opponentDifficultyOverride);
     return {
       opponent: result.opponent,
       animals: result.animals,
@@ -1350,7 +1350,8 @@ export const simulateFullBattle = (
   playerAnimals: Animal[],
   betAmount: number,
   lineupConfig?: LineupConfig,
-  dynamicContext?: DynamicOpponentContext
+  dynamicContext?: DynamicOpponentContext,
+  opponentDifficultyOverride?: 'easy' | 'normal' | 'hard'
 ): {
   playerUnits: BattleUnit[];
   enemyUnits: BattleUnit[];
@@ -1368,7 +1369,7 @@ export const simulateFullBattle = (
     playerAnimals.reduce((sum, a) => sum + a.level, 0) / playerAnimals.length
   );
 
-  const { opponent, animals: enemyAnimals, effectiveDifficulty, rewardMultiplier } = generateEnemyTeam(playerAvgLevel, dynamicContext);
+  const { opponent, animals: enemyAnimals, effectiveDifficulty, rewardMultiplier } = generateEnemyTeam(playerAvgLevel, dynamicContext, opponentDifficultyOverride);
 
   const config = lineupConfig || { animals: [], actionPriority: 'speedFirst' as ActionPriority };
 
