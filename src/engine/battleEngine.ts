@@ -227,6 +227,9 @@ export const createBattleUnit = (
     setCritBonus += entry.bonus.stats.crit || 0;
   }
 
+  const bondCritBonus = bondBonuses?.crit || 0;
+  const totalCritBonus = setCritBonus + bondCritBonus;
+
   return {
     id: generateId('unit'),
     animalId: animal.id,
@@ -244,7 +247,7 @@ export const createBattleUnit = (
     position,
     formationPosition,
     targetStrategy,
-    buffs: setCritBonus > 0 ? [{ stat: 'crit', value: setCritBonus, remainingTurns: -1 }] : [],
+    buffs: totalCritBonus > 0 ? [{ stat: 'crit', value: totalCritBonus, remainingTurns: -1 }] : [],
     statusEffects: [],
     comboCount: 0,
     isSkipTurn: false,
@@ -1379,7 +1382,8 @@ export const simulateFullBattle = (
   betAmount: number,
   lineupConfig?: LineupConfig,
   dynamicContext?: DynamicOpponentContext,
-  opponentDifficultyOverride?: 'easy' | 'normal' | 'hard'
+  opponentDifficultyOverride?: 'easy' | 'normal' | 'hard',
+  allOwnedTemplateIds?: Set<string>
 ): {
   playerUnits: BattleUnit[];
   enemyUnits: BattleUnit[];
@@ -1401,8 +1405,8 @@ export const simulateFullBattle = (
 
   const config = lineupConfig || { animals: [], actionPriority: 'speedFirst' as ActionPriority };
 
-  const ownedTemplateIds = new Set(playerAnimals.map(a => a.templateId));
-  const bondBonuses = calculateAllBondBonuses(ownedTemplateIds);
+  const bondTemplateIds = allOwnedTemplateIds || new Set(playerAnimals.map(a => a.templateId));
+  const bondBonuses = calculateAllBondBonuses(bondTemplateIds);
   const hasBondBonus = (bondBonuses.hp + bondBonuses.atk + bondBonuses.def + bondBonuses.spd + bondBonuses.crit) > 0;
 
   const playerUnits = playerAnimals.map((animal, i) => {
@@ -1419,6 +1423,21 @@ export const simulateFullBattle = (
   const initialEnemyUnits = JSON.parse(JSON.stringify(enemyUnits));
 
   const fullBattleLog: BattleLogEntry[] = [];
+
+  if (hasBondBonus) {
+    const bonusParts: string[] = [];
+    if (bondBonuses.hp > 0) bonusParts.push(`HP+${bondBonuses.hp}`);
+    if (bondBonuses.atk > 0) bonusParts.push(`ATK+${bondBonuses.atk}`);
+    if (bondBonuses.def > 0) bonusParts.push(`DEF+${bondBonuses.def}`);
+    if (bondBonuses.spd > 0) bonusParts.push(`SPD+${bondBonuses.spd}`);
+    if (bondBonuses.crit > 0) bonusParts.push(`CRIT+${bondBonuses.crit}%`);
+    fullBattleLog.push({
+      timestamp: Date.now(),
+      type: 'bond',
+      message: `🔗 羁绊加成生效！${bonusParts.join(' ')}`,
+    });
+  }
+
   let turn = 0;
 
   const processUnitAction = (unit: BattleUnit): boolean => {
@@ -1646,7 +1665,8 @@ export const simulateFullBattleWithCustomEnemies = (
   playerAnimals: Animal[],
   betAmount: number,
   lineupConfig: LineupConfig | undefined,
-  customEnemyConfig: CustomEnemyBattleConfig
+  customEnemyConfig: CustomEnemyBattleConfig,
+  allOwnedTemplateIds?: Set<string>
 ): {
   playerUnits: BattleUnit[];
   enemyUnits: BattleUnit[];
@@ -1660,8 +1680,8 @@ export const simulateFullBattleWithCustomEnemies = (
 
   const config = lineupConfig || { animals: [], actionPriority: 'speedFirst' as ActionPriority };
 
-  const ownedTemplateIds2 = new Set(playerAnimals.map(a => a.templateId));
-  const bondBonuses2 = calculateAllBondBonuses(ownedTemplateIds2);
+  const bondTemplateIds2 = allOwnedTemplateIds || new Set(playerAnimals.map(a => a.templateId));
+  const bondBonuses2 = calculateAllBondBonuses(bondTemplateIds2);
   const hasBondBonus2 = (bondBonuses2.hp + bondBonuses2.atk + bondBonuses2.def + bondBonuses2.spd + bondBonuses2.crit) > 0;
 
   const playerUnits = playerAnimals.map((animal, i) => {
@@ -1682,6 +1702,21 @@ export const simulateFullBattleWithCustomEnemies = (
   const initialEnemyUnits = JSON.parse(JSON.stringify(enemyUnits));
 
   const fullBattleLog: BattleLogEntry[] = [];
+
+  if (hasBondBonus2) {
+    const bonusParts: string[] = [];
+    if (bondBonuses2.hp > 0) bonusParts.push(`HP+${bondBonuses2.hp}`);
+    if (bondBonuses2.atk > 0) bonusParts.push(`ATK+${bondBonuses2.atk}`);
+    if (bondBonuses2.def > 0) bonusParts.push(`DEF+${bondBonuses2.def}`);
+    if (bondBonuses2.spd > 0) bonusParts.push(`SPD+${bondBonuses2.spd}`);
+    if (bondBonuses2.crit > 0) bonusParts.push(`CRIT+${bondBonuses2.crit}%`);
+    fullBattleLog.push({
+      timestamp: Date.now(),
+      type: 'bond',
+      message: `🔗 羁绊加成生效！${bonusParts.join(' ')}`,
+    });
+  }
+
   let turn = 0;
 
   const processUnitAction = (unit: BattleUnit): boolean => {

@@ -688,6 +688,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       ownedAnimals: state.ownedAnimals.filter(a => a.id !== id),
       lineup: state.lineup.filter(lid => lid !== id),
     }));
+    get().refreshBonds();
+    get().refreshCodexMilestones();
     get().saveGame();
   },
 
@@ -1117,6 +1119,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       pityState: { ...state.pityState, animal: newPity },
       gachaRecords: [...state.gachaRecords, gachaRecord],
     }));
+    get().refreshBonds();
+    get().refreshCodexMilestones();
     get().saveGame();
     return { animal, isNew, isPity };
   },
@@ -1333,6 +1337,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
 
     set(stateUpdates as Partial<GameState>);
+    get().refreshBonds();
+    get().refreshCodexMilestones();
     get().saveGame();
     return { item, itemType, isNew, isPity, isFeatured };
   },
@@ -1557,6 +1563,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       gachaRecords: [...s.gachaRecords, ...newRecords],
     }));
 
+    if (newAnimals.length > 0) {
+      get().refreshBonds();
+      get().refreshCodexMilestones();
+    }
     get().saveGame(true);
     return { results, totalCost };
   },
@@ -1613,7 +1623,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       dynamicContext.difficultyTier = 'hard';
     }
 
-    const result = simulateFullBattle(lineupAnimals, betAmount, state.lineupConfig, dynamicContext, opponentDifficulty);
+    const allOwnedTemplateIds = new Set(state.ownedAnimals.map(a => a.templateId));
+    const result = simulateFullBattle(lineupAnimals, betAmount, state.lineupConfig, dynamicContext, opponentDifficulty, allOwnedTemplateIds);
 
     const battleRecord: BattleRecord = {
       id: generateBattleId(),

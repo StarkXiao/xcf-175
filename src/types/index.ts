@@ -141,7 +141,7 @@ export type Element = 'fire' | 'ice' | 'thunder' | 'nature' | 'dark';
 
 export type StatusEffectType = 'poison' | 'burn' | 'freeze' | 'paralysis' | 'bleed';
 
-export type BattleLogType = 'damage' | 'crit' | 'heal' | 'skill' | 'buff' | 'debuff' | 'death' | 'turnStart' | 'battleEnd' | 'info' | 'attack' | 'victory' | 'elementAdvantage' | 'statusTick' | 'statusApply' | 'combo' | 'passive' | 'comboTrigger' | 'branchActivate' | 'setBonus';
+export type BattleLogType = 'damage' | 'crit' | 'heal' | 'skill' | 'buff' | 'debuff' | 'death' | 'turnStart' | 'battleEnd' | 'info' | 'attack' | 'victory' | 'elementAdvantage' | 'statusTick' | 'statusApply' | 'combo' | 'passive' | 'comboTrigger' | 'branchActivate' | 'setBonus' | 'bond';
 
 export interface AnimalTemplate {
   id: string;

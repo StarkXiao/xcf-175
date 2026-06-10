@@ -863,6 +863,8 @@ export default function Replay() {
                           ? 'bg-cyber-purple/10 text-cyber-purple'
                           : log.type === 'combo'
                           ? 'bg-cyber-red/10 text-cyber-red'
+                          : log.type === 'bond'
+                          ? 'bg-cyber-pink/10 text-cyber-pink'
                           : 'bg-cyber-yellow/10 text-cyber-yellow'
                         : 'text-gray-400'
                     }`}

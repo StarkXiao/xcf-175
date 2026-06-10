@@ -380,11 +380,13 @@ export const useStoryStore = create<StoryState>((set, get) => ({
 
     const { animals: enemyAnimals, lineupConfig: enemyLineupConfig } = createEnemyLineup(stage);
 
+    const allOwnedTemplateIds = new Set(gameStore.ownedAnimals.map(a => a.templateId));
     const result = simulateFullBattleWithCustomEnemies(
       playerLineupAnimals,
       0,
       gameStore.lineupConfig,
-      { enemyAnimals, enemyLineupConfig }
+      { enemyAnimals, enemyLineupConfig },
+      allOwnedTemplateIds
     );
 
     const battleRecord = {
