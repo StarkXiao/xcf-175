@@ -241,3 +241,125 @@ export const CODEX_RANK_NAMES: Record<number, string> = {
   3: '精通',
   4: '传说',
 };
+
+export const SEASON_DURATION_DAYS = 30;
+
+export const SEASON_POINT_WIN_BASE = 25;
+export const SEASON_POINT_WIN_STREAK_BONUS = 5;
+export const SEASON_POINT_WIN_DIFFICULTY_BONUS = 8;
+export const SEASON_POINT_LOSS_BASE = -15;
+export const SEASON_POINT_LOSS_STREAK_REDUCTION = 3;
+
+export const RANK_TIER_ORDER = ['bronze', 'silver', 'gold', 'platinum', 'diamond', 'master', 'grandmaster'] as const;
+
+export const RANK_TIER_NAMES: Record<string, string> = {
+  bronze: '青铜',
+  silver: '白银',
+  gold: '黄金',
+  platinum: '铂金',
+  diamond: '钻石',
+  master: '大师',
+  grandmaster: '宗师',
+};
+
+export const RANK_TIER_EMOJIS: Record<string, string> = {
+  bronze: '🥉',
+  silver: '🥈',
+  gold: '🥇',
+  platinum: '💎',
+  diamond: '💠',
+  master: '👑',
+  grandmaster: '🔱',
+};
+
+export const RANK_TIER_COLORS: Record<string, string> = {
+  bronze: '#cd7f32',
+  silver: '#c0c0c0',
+  gold: '#ffd700',
+  platinum: '#00e5ff',
+  diamond: '#b388ff',
+  master: '#ff6e40',
+  grandmaster: '#ff1744',
+};
+
+export const RANK_SUB_TIER_NAMES: Record<number, string> = {
+  1: 'III',
+  2: 'II',
+  3: 'I',
+};
+
+export const RANK_POINT_THRESHOLDS: Record<string, { promotion: number; demotion: number }> = {
+  bronze: { promotion: 100, demotion: 0 },
+  silver: { promotion: 200, demotion: 0 },
+  gold: { promotion: 350, demotion: 50 },
+  platinum: { promotion: 550, demotion: 100 },
+  diamond: { promotion: 800, demotion: 150 },
+  master: { promotion: 1100, demotion: 200 },
+  grandmaster: { promotion: Infinity, demotion: 250 },
+};
+
+export const SEASON_REWARD_COINS: Record<string, number> = {
+  bronze: 500,
+  silver: 1000,
+  gold: 2000,
+  platinum: 4000,
+  diamond: 7000,
+  master: 12000,
+  grandmaster: 20000,
+};
+
+export const SEASON_REWARD_GEMS: Record<string, number> = {
+  bronze: 5,
+  silver: 10,
+  gold: 20,
+  platinum: 35,
+  diamond: 60,
+  master: 100,
+  grandmaster: 200,
+};
+
+export const RANK_PROTECTION_CONFIG: Record<string, { maxCount: number; resetOnPromotion: boolean }> = {
+  bronze: { maxCount: 99, resetOnPromotion: true },
+  silver: { maxCount: 5, resetOnPromotion: true },
+  gold: { maxCount: 4, resetOnPromotion: true },
+  platinum: { maxCount: 3, resetOnPromotion: true },
+  diamond: { maxCount: 3, resetOnPromotion: true },
+  master: { maxCount: 2, resetOnPromotion: true },
+  grandmaster: { maxCount: 2, resetOnPromotion: true },
+};
+
+export const MATCHMAKING_CONFIG = {
+  tierRange: 1,
+  pointRange: 150,
+  fairThreshold: 0.7,
+  challengeBonus: 1.3,
+  advantagePenalty: 0.8,
+  sameTierBonus: 1.1,
+} as const;
+
+export const SEASON_SETTLEMENT_CONFIG = {
+  softResetRatio: 0.5,
+  minResetPoints: 0,
+  placementMatchesCount: 5,
+  placementBasePoints: 75,
+  seasonEndWarningHours: 24,
+} as const;
+
+export const SEASON_PLACEMENT_TIERS: { minWins: number; tier: import('@/types').RankTier; subTier: import('@/types').RankSubTier }[] = [
+  { minWins: 5, tier: 'gold', subTier: 2 },
+  { minWins: 4, tier: 'silver', subTier: 3 },
+  { minWins: 3, tier: 'silver', subTier: 2 },
+  { minWins: 2, tier: 'silver', subTier: 1 },
+  { minWins: 1, tier: 'bronze', subTier: 3 },
+  { minWins: 0, tier: 'bronze', subTier: 1 },
+];
+
+export const RANK_DEMOTION_PROTECTION_THRESHOLD: Record<string, number> = {
+  bronze: 0,
+  silver: 30,
+  gold: 80,
+  platinum: 150,
+  diamond: 250,
+  master: 400,
+  grandmaster: 600,
+};

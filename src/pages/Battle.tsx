@@ -7,10 +7,12 @@ import { BattleUnitDisplay } from '@/components/BattleUnitDisplay';
 import { EffectLayer } from '@/components/EffectLayer';
 import { useGameStore } from '@/store/useGameStore';
 import { useBattleStore } from '@/store/useBattleStore';
+import { useSeasonStore } from '@/store/useSeasonStore';
 import { BATTLE_CONSTANTS } from '@/engine/constants';
 import type { BattleLogEntry } from '@/types';
 import { getRarityColor } from '@/utils/format';
 import { computePlayerStrengthScore, computeLineupSignature, calculateDynamicDifficulty, DYNAMIC_TIER_NAMES, DYNAMIC_TIER_EMOJIS, DYNAMIC_TIER_COLORS } from '@/data/opponents';
+import { formatRankDisplay, getRankColor } from '@/data/seasons';
 
 export default function Battle() {
   const navigate = useNavigate();
@@ -18,6 +20,8 @@ export default function Battle() {
   const battleId = params.id;
 
   const { battleHistory, lineup, getLineupAnimals, startBattle, player } = useGameStore();
+  const rankChange = useSeasonStore(state => state.lastRankChange);
+  const protectionState = useSeasonStore(state => state.protectionState);
 
   const lineupAnimals = getLineupAnimals();
   const {
@@ -292,6 +296,32 @@ export default function Battle() {
                 <div className={`text-4xl font-cyber font-black mb-4 ${battleRecord.isWin ? 'text-cyber-green' : 'text-cyber-red'}`}>
                   {battleRecord.isWin ? '🎉 胜利!' : '💀 失败'}
                 </div>
+                {rankChange && (
+                  <NeonCard className="mb-4 p-3 inline-block">
+                    <div className="flex items-center gap-4">
+                      <div className="text-left">
+                        <div className={`text-sm font-cyber font-bold ${rankChange.pointsChange > 0 ? 'text-cyber-green' : 'text-cyber-red'}`}>
+                          {rankChange.pointsChange > 0 ? '+' : ''}{rankChange.pointsChange} 天梯积分
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {rankChange.protectionUsed ? '🛡️ 段位保护已触发' :
+                            rankChange.isPromotion ? '🎉 晋段成功！' :
+                            rankChange.isDemotion ? '📉 段位下降' : ''}
+                        </div>
+                      </div>
+                      <div
+                        className="text-sm font-cyber font-bold px-3 py-1 rounded-lg"
+                        style={{
+                          color: getRankColor(rankChange.newTier),
+                          background: `${getRankColor(rankChange.newTier)}15`,
+                          border: `1px solid ${getRankColor(rankChange.newTier)}30`,
+                        }}
+                      >
+                        {formatRankDisplay(rankChange.newTier, rankChange.newSubTier)}
+                      </div>
+                    </div>
+                  </NeonCard>
+                )}
                 <div className="flex gap-4 justify-center">
                   <NeonButton onClick={() => navigate('/replay')}>
                     查看回放

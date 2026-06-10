@@ -8,15 +8,19 @@ import Replay from '@/pages/Replay';
 import Shop from '@/pages/Shop';
 import Ascend from '@/pages/Ascend';
 import Codex from '@/pages/Codex';
+import Season from '@/pages/Season';
 import { useGameStore } from '@/store/useGameStore';
+import { useSeasonStore } from '@/store/useSeasonStore';
 import { useEffect } from 'react';
 
 function App() {
   const { initialize, isInitialized } = useGameStore();
+  const initSeason = useSeasonStore(state => state.initSeason);
 
   useEffect(() => {
     initialize();
-  }, [initialize]);
+    initSeason();
+  }, [initialize, initSeason]);
 
   if (!isInitialized) {
     return (
@@ -56,6 +60,7 @@ function App() {
             <Route path="/shop" element={<Shop />} />
             <Route path="/ascend" element={<Ascend />} />
             <Route path="/codex" element={<Codex />} />
+            <Route path="/season" element={<Season />} />
           </Routes>
           <NavBar />
         </div>

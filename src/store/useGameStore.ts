@@ -44,6 +44,7 @@ import { getSkillTemplate } from '@/data/skills';
 import { MATERIAL_TEMPLATES, getMaterialTemplate } from '@/data/materials';
 import { getStarUpCost, getBreakthroughCost, getSkillSlotsForStar, getSkillLevelCapForBreakthrough, BATTLE_MATERIAL_DROPS } from '@/data/ascendConfig';
 import { computePlayerStrengthScore, computeLineupSignature, calculateDynamicDifficulty } from '@/data/opponents';
+import { useSeasonStore } from '@/store/useSeasonStore';
 
 interface GameState {
   player: {
@@ -116,6 +117,7 @@ interface GameState {
     reward?: number;
     effectiveDifficulty?: DynamicDifficultyTier;
     rewardMultiplier?: number;
+    rankChange?: import('@/types').RankChangeResult;
   };
 
   getAnimalById: (id: string) => Animal | undefined;
@@ -1430,6 +1432,14 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().addMaterials(droppedMaterials);
     }
 
+    const newWinStreak = result.isWin ? state.player.currentWinStreak + 1 : 0;
+    const seasonStore = useSeasonStore.getState();
+    seasonStore.startMatchmaking();
+    seasonStore.processBattleResult(result.isWin, newWinStreak, dynamicContext.difficultyTier, result.opponentName, result.opponentAvatar);
+    seasonStore.checkSeasonReset();
+
+    const rankChange = seasonStore.lastRankChange;
+
     get().saveGame(true);
 
     return {
@@ -1439,6 +1449,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       reward: result.reward,
       effectiveDifficulty: result.effectiveDifficulty,
       rewardMultiplier: result.rewardMultiplier,
+      rankChange,
     };
   },
 

@@ -506,6 +506,13 @@ export interface SaveData {
   pityState?: PityState;
   gachaRecords?: GachaRecord[];
   limitedPool?: LimitedPoolConfig;
+  seasonData?: SeasonSaveData;
+}
+
+export interface SeasonSaveData {
+  currentRank: RankInfo;
+  currentSeasonId: string;
+  seasonHistory: SeasonRecord[];
 }
 
 export type GachaPoolType = 'animal' | 'part' | 'skill' | 'limited';
@@ -561,6 +568,135 @@ export interface TargetSelectionStrategy {
   id: string;
   name: string;
   description: string;
+}
+
+export type RankTier = 'bronze' | 'silver' | 'gold' | 'platinum' | 'diamond' | 'master' | 'grandmaster';
+
+export type RankSubTier = 1 | 2 | 3;
+
+export interface RankInfo {
+  tier: RankTier;
+  subTier: RankSubTier;
+  points: number;
+  seasonWins: number;
+  seasonLosses: number;
+  highestTier: RankTier;
+  highestSubTier: RankSubTier;
+}
+
+export interface RankTierConfig {
+  tier: RankTier;
+  name: string;
+  emoji: string;
+  color: string;
+  pointThreshold: number;
+  subTiers: 3 | 1;
+  rewards: SeasonReward[];
+}
+
+export interface SeasonReward {
+  type: 'coins' | 'gems' | 'material';
+  amount: number;
+  materialTemplateId?: string;
+  description: string;
+}
+
+export interface SeasonInfo {
+  id: string;
+  name: string;
+  subtitle: string;
+  startTime: number;
+  endTime: number;
+  status: 'active' | 'ended';
+}
+
+export interface SeasonRecord {
+  seasonId: string;
+  seasonName: string;
+  finalTier: RankTier;
+  finalSubTier: RankSubTier;
+  highestTier: RankTier;
+  highestSubTier: RankSubTier;
+  totalWins: number;
+  totalLosses: number;
+  finalPoints: number;
+  rewards: SeasonReward[];
+  timestamp: number;
+  battleSummaries: SeasonBattleSummary[];
+  stats: SeasonStats;
+  rewardsClaimed: boolean;
+}
+
+export interface LeaderboardEntry {
+  rank: number;
+  playerName: string;
+  avatar: string;
+  tier: RankTier;
+  subTier: RankSubTier;
+  points: number;
+  wins: number;
+  losses: number;
+  isPlayer: boolean;
+  winRate: number;
+  trend: 'up' | 'down' | 'stable';
+}
+
+export interface RankChangeResult {
+  pointsChange: number;
+  newTier: RankTier;
+  newSubTier: RankSubTier;
+  newPoints: number;
+  isPromotion: boolean;
+  isDemotion: boolean;
+  protectionUsed?: boolean;
+  prevProtectionCount?: number;
+}
+
+export interface RankProtectionState {
+  remainingCount: number;
+  maxCount: number;
+  isActive: boolean;
+}
+
+export interface MatchmakingResult {
+  opponentTier: RankTier;
+  opponentSubTier: RankSubTier;
+  opponentPoints: number;
+  matchQuality: 'fair' | 'advantage' | 'challenge';
+  pointBonus: number;
+}
+
+export interface SeasonBattleSummary {
+  isWin: boolean;
+  rankChange: RankChangeResult;
+  matchmaking: MatchmakingResult;
+  timestamp: number;
+  opponentName: string;
+  opponentAvatar: string;
+  difficultyTier: DynamicDifficultyTier;
+}
+
+export interface SeasonSettlementResult {
+  seasonId: string;
+  seasonName: string;
+  finalRank: RankInfo;
+  rewards: SeasonReward[];
+  archivedAt: number;
+  nextSeasonId: string;
+  placementRank: RankInfo;
+}
+
+export interface SeasonStats {
+  totalBattles: number;
+  totalWins: number;
+  totalLosses: number;
+  winRate: number;
+  avgPointsPerWin: number;
+  avgPointsPerLoss: number;
+  longestWinStreak: number;
+  promotionsCount: number;
+  demotionsCount: number;
+  timePlayed: number;
 }
 
 export interface DamageResult {

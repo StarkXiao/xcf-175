@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router';
-import { Swords, Users, BookOpen, ShoppingBag, Trophy, Sparkles, Star, TrendingUp, TrendingDown, Zap, Clock, ChevronRight } from 'lucide-react';
+import { Swords, Users, BookOpen, ShoppingBag, Trophy, Sparkles, Star, TrendingUp, TrendingDown, Zap, Clock, ChevronRight, Crown } from 'lucide-react';
 import { NeonButton } from '@/components/NeonButton';
 import { NeonCard } from '@/components/NeonCard';
 import { MiniChart } from '@/components/MiniChart';
@@ -10,10 +10,13 @@ import { getAnimalTemplate } from '@/data/animals';
 import { calculateAnimalStats } from '@/engine/battleEngine';
 import { getRarityColor } from '@/utils/format';
 import { formatTime } from '@/utils/format';
+import { useSeasonStore } from '@/store/useSeasonStore';
+import { formatRankDisplay, getRankEmoji, getRankColor } from '@/data/seasons';
 
 export default function Home() {
   const navigate = useNavigate();
   const { lineup, ownedAnimals, startBattle, battleHistory, codex, player, gachaRecords } = useGameStore();
+  const { currentRank, currentSeason } = useSeasonStore();
   const canBattle = lineup.length > 0 && lineup.length <= BATTLE_CONSTANTS.MAX_TEAM_SIZE;
   const lastBattle = battleHistory[0];
 
@@ -456,6 +459,13 @@ export default function Home() {
               desc: '下注对战AI对手，赢取丰厚奖励',
               action: () => navigate('/battle'),
               color: 'red' as const,
+            },
+            {
+              icon: Crown,
+              title: `天梯 · ${formatRankDisplay(currentRank.tier, currentRank.subTier)}`,
+              desc: `${currentSeason.name} ${currentSeason.subtitle} · ${currentRank.points}积分`,
+              action: () => navigate('/season'),
+              color: 'yellow' as const,
             },
             {
               icon: Trophy,
