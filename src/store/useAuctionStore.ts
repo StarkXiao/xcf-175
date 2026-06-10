@@ -584,9 +584,11 @@ export const useAuctionStore = create<AuctionState>((set, get) => ({
     const now = Date.now();
     const gameStore = useGameStore.getState();
     const newTransactions: TransactionRecord[] = [];
+    let anyChanged = false;
 
     const updated = state.auctions.map(a => {
       if (a.status !== 'active' || a.endsAt > now) return a;
+      anyChanged = true;
 
       if (a.isPlayer && a.highestBidderId) {
         const revenue = Math.floor(a.currentPrice * 0.95);
@@ -620,6 +622,8 @@ export const useAuctionStore = create<AuctionState>((set, get) => ({
       return { ...a, status: 'ended' as const };
     });
 
+    if (!anyChanged) return;
+
     if (newTransactions.length > 0) {
       set(state => ({
         auctions: updated,
@@ -629,9 +633,8 @@ export const useAuctionStore = create<AuctionState>((set, get) => ({
       set({ auctions: updated });
     }
 
-    if (newTransactions.length > 0) {
-      get().saveAuction(true);
-    }
+    gameStore.saveGame(true);
+    get().saveAuction(true);
   },
 
   simulateFakeBids: () => {
