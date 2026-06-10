@@ -23,7 +23,7 @@ export type BreakthroughTier = 0 | 1 | 2 | 3 | 4;
 
 export type MaterialRarity = 1 | 2 | 3 | 4 | 5;
 
-export type MaterialType = 'star' | 'breakthrough';
+export type MaterialType = 'star' | 'breakthrough' | 'synthesis' | 'modification' | 'experiment' | 'rare';
 
 export interface MaterialTemplate {
   id: string;
@@ -510,6 +510,7 @@ export interface SaveData {
   seasonData?: SeasonSaveData;
   guildData?: GuildExpeditionSaveData;
   storyData?: StorySaveData;
+  labData?: LabSaveData;
 }
 
 export interface SeasonSaveData {
@@ -982,4 +983,96 @@ export interface StageBattleResult {
     isFirstClear: boolean;
   }[];
   battleRecordId?: string;
+}
+
+export type LabMaterialType = 'synthesis' | 'modification' | 'experiment' | 'rare';
+
+export interface LabMaterialTemplate {
+  id: string;
+  name: string;
+  description: string;
+  emoji: string;
+  rarity: MaterialRarity;
+  type: LabMaterialType;
+}
+
+export interface LabMaterial {
+  id: string;
+  templateId: string;
+  name: string;
+  description: string;
+  emoji: string;
+  rarity: MaterialRarity;
+  type: LabMaterialType;
+}
+
+export interface PartSynthesisRecipe {
+  id: string;
+  name: string;
+  description: string;
+  targetPartTemplateId: string;
+  targetRarity: Rarity;
+  materials: { templateId: string; count: number }[];
+  coinCost: number;
+  successRate: number;
+  failureReturnRate: number;
+}
+
+export interface SkillModificationRecipe {
+  id: string;
+  name: string;
+  description: string;
+  targetSkillTemplateId: string;
+  materials: { templateId: string; count: number }[];
+  coinCost: number;
+  successRate: number;
+  effects: {
+    damageBonus?: number;
+    cooldownReduction?: number;
+    statusEffectChanceBonus?: number;
+    addStatusEffect?: {
+      type: StatusEffectType;
+      chance: number;
+      duration: number;
+      damage?: number;
+    };
+    addPassive?: PassiveEffect;
+  };
+}
+
+export interface ProbabilityExperiment {
+  id: string;
+  name: string;
+  description: string;
+  emoji: string;
+  materials: { templateId: string; count: number }[];
+  coinCost: number;
+  rewards: {
+    type: 'part' | 'skill' | 'material' | 'coins' | 'gems';
+    templateId?: string;
+    amount?: number;
+    rarity?: Rarity;
+    weight: number;
+  }[];
+  guaranteedRarity?: Rarity;
+}
+
+export interface LabLogEntry {
+  id: string;
+  timestamp: number;
+  type: 'synthesis' | 'modification' | 'experiment';
+  success: boolean;
+  description: string;
+  rewards?: { type: string; name: string; emoji: string; rarity?: Rarity; amount?: number }[];
+}
+
+export interface LabSaveData {
+  synthesisCount: number;
+  modificationCount: number;
+  experimentCount: number;
+  successCount: number;
+  failureCount: number;
+  recentLogs: LabLogEntry[];
+  unlockedRecipes: string[];
+  unlockedExperiments: string[];
 }

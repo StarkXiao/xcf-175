@@ -14,6 +14,7 @@ import type {
   TargetStrategy,
   ActionPriority,
   Material,
+  MaterialType,
   CodexEntry,
   PityState,
   GachaRecord,
@@ -24,6 +25,12 @@ import type {
   BreakthroughTier,
   DynamicDifficultyTier,
   StorySaveData,
+  LabSaveData,
+  LabLogEntry,
+  PartSynthesisRecipe,
+  SkillModificationRecipe,
+  ProbabilityExperiment,
+  LabMaterial,
 } from '@/types';
 import { ANIMAL_TEMPLATES } from '@/data/animals';
 import { PART_TEMPLATES } from '@/data/parts';
@@ -45,6 +52,17 @@ import { getMatchmakingDifficultyModifier } from '@/data/seasons';
 import { getSkillTemplate } from '@/data/skills';
 import { MATERIAL_TEMPLATES, getMaterialTemplate } from '@/data/materials';
 import { getStarUpCost, getBreakthroughCost, getSkillSlotsForStar, getSkillLevelCapForBreakthrough, BATTLE_MATERIAL_DROPS } from '@/data/ascendConfig';
+import {
+  LAB_MATERIAL_TEMPLATES,
+  getLabMaterialTemplate,
+  PART_SYNTHESIS_RECIPES,
+  SKILL_MODIFICATION_RECIPES,
+  PROBABILITY_EXPERIMENTS,
+  getPartSynthesisRecipe,
+  getSkillModificationRecipe,
+  getProbabilityExperiment,
+  isLabMaterial,
+} from '@/data/lab';
 import { computePlayerStrengthScore, computeLineupSignature, calculateDynamicDifficulty } from '@/data/opponents';
 import { useSeasonStore } from '@/store/useSeasonStore';
 
@@ -137,6 +155,41 @@ interface GameState {
   updateCodex: (templateId: string) => void;
   canStarUp: (id: string) => boolean;
   canBreakthrough: (id: string) => boolean;
+
+  labData: LabSaveData;
+
+  synthesizePart: (recipeId: string) => {
+    success: boolean;
+    part?: Part;
+    returnedMaterials?: { templateId: string; count: number }[];
+  };
+  canSynthesize: (recipeId: string) => boolean;
+
+  modifySkill: (recipeId: string, skillId: string) => {
+    success: boolean;
+    skill?: Skill;
+    effects?: {
+      damageBonus?: number;
+      cooldownReduction?: number;
+      statusEffectChanceBonus?: number;
+    };
+  };
+  canModifySkill: (recipeId: string, skillId: string) => boolean;
+
+  runExperiment: (experimentId: string) => {
+    rewards: {
+      type: string;
+      name: string;
+      emoji: string;
+      rarity?: Rarity;
+      amount?: number;
+      item?: Part | Skill | Material;
+    }[];
+  };
+  canRunExperiment: (experimentId: string) => boolean;
+
+  addLabLog: (log: Omit<LabLogEntry, 'id' | 'timestamp'>) => void;
+  clearLabLogs: () => void;
 }
 
 const DEFAULT_PITY_STATE: PityState = {
@@ -303,6 +356,16 @@ export const useGameStore = create<GameState>((set, get) => ({
   gachaRecords: [],
   limitedPool: { ...LIMITED_POOL },
   storyData: null,
+  labData: {
+    synthesisCount: 0,
+    modificationCount: 0,
+    experimentCount: 0,
+    successCount: 0,
+    failureCount: 0,
+    recentLogs: [],
+    unlockedRecipes: [],
+    unlockedExperiments: [],
+  },
   isLoading: true,
   isNewPlayer: false,
   isInitialized: false,
@@ -324,6 +387,33 @@ export const useGameStore = create<GameState>((set, get) => ({
     initialAnimals[0].skills = [{ skillId: 'skill_bite', level: 1 }];
     initialAnimals[1].skills = [{ skillId: 'skill_claw', level: 1 }];
 
+    const initialMaterials: Material[] = [];
+    const starterMaterials = [
+      { templateId: 'lab_synthesis_dust', count: 10 },
+      { templateId: 'lab_synthesis_crystal', count: 5 },
+      { templateId: 'lab_synthesis_core', count: 2 },
+      { templateId: 'lab_modification_chip', count: 8 },
+      { templateId: 'lab_modification_processor', count: 4 },
+      { templateId: 'lab_experiment_flask', count: 6 },
+      { templateId: 'lab_experiment_catalyst', count: 3 },
+    ];
+    starterMaterials.forEach(sm => {
+      const template = getLabMaterialTemplate(sm.templateId);
+      if (template) {
+        for (let i = 0; i < sm.count; i++) {
+          initialMaterials.push({
+            id: generateId('mat'),
+            templateId: template.id,
+            name: template.name,
+            description: template.description,
+            emoji: template.emoji,
+            rarity: template.rarity,
+            type: template.type as MaterialType,
+          });
+        }
+      }
+    });
+
     set({
       player: {
         id: generateId('player'),
@@ -339,7 +429,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       ownedAnimals: initialAnimals,
       ownedParts: initialParts,
       ownedSkills: initialSkills,
-      ownedMaterials: [],
+      ownedMaterials: initialMaterials,
       codex: [],
       lineup: initialAnimals.map(a => a.id),
       lineupConfig: {
@@ -355,6 +445,16 @@ export const useGameStore = create<GameState>((set, get) => ({
       gachaRecords: [],
       limitedPool: { ...LIMITED_POOL },
       storyData: null,
+      labData: {
+        synthesisCount: 0,
+        modificationCount: 0,
+        experimentCount: 0,
+        successCount: 0,
+        failureCount: 0,
+        recentLogs: [],
+        unlockedRecipes: PART_SYNTHESIS_RECIPES.filter(r => r.targetRarity <= 3).map(r => r.id),
+        unlockedExperiments: PROBABILITY_EXPERIMENTS.slice(0, 3).map(e => e.id),
+      },
       isLoading: false,
       isNewPlayer: true,
       isInitialized: true,
@@ -439,6 +539,16 @@ export const useGameStore = create<GameState>((set, get) => ({
       gachaRecords: data.gachaRecords || [],
       limitedPool: data.limitedPool || { ...LIMITED_POOL },
       storyData: data.storyData || null,
+      labData: data.labData || {
+        synthesisCount: 0,
+        modificationCount: 0,
+        experimentCount: 0,
+        successCount: 0,
+        failureCount: 0,
+        recentLogs: [],
+        unlockedRecipes: PART_SYNTHESIS_RECIPES.filter(r => r.targetRarity <= 3).map(r => r.id),
+        unlockedExperiments: PROBABILITY_EXPERIMENTS.slice(0, 3).map(e => e.id),
+      },
       isLoading: false,
       isNewPlayer: false,
       isInitialized: true,
@@ -466,6 +576,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       gachaRecords: state.gachaRecords.slice(-200),
       limitedPool: state.limitedPool,
       storyData: state.storyData || undefined,
+      labData: state.labData,
     };
 
     if (force) {
@@ -501,6 +612,16 @@ export const useGameStore = create<GameState>((set, get) => ({
       gachaRecords: [],
       limitedPool: { ...LIMITED_POOL },
       storyData: null,
+      labData: {
+        synthesisCount: 0,
+        modificationCount: 0,
+        experimentCount: 0,
+        successCount: 0,
+        failureCount: 0,
+        recentLogs: [],
+        unlockedRecipes: [],
+        unlockedExperiments: [],
+      },
       isLoading: true,
       isNewPlayer: false,
       isInitialized: false,
@@ -1714,6 +1835,460 @@ export const useGameStore = create<GameState>((set, get) => ({
         ],
       };
     });
+    get().saveGame();
+  },
+
+  canSynthesize: (recipeId: string): boolean => {
+    const state = get();
+    const recipe = getPartSynthesisRecipe(recipeId);
+    if (!recipe) return false;
+
+    if (state.player.coins < recipe.coinCost) return false;
+
+    for (const mat of recipe.materials) {
+      const owned = state.ownedMaterials.filter(m => m.templateId === mat.templateId).length;
+      if (owned < mat.count) return false;
+    }
+
+    return true;
+  },
+
+  synthesizePart: (recipeId: string) => {
+    const state = get();
+    const recipe = getPartSynthesisRecipe(recipeId);
+    if (!recipe) return { success: false };
+    if (!state.canSynthesize(recipeId)) return { success: false };
+
+    const template = getPartTemplate(recipe.targetPartTemplateId);
+    if (!template) return { success: false };
+
+    let materialsToRemove: string[] = [];
+    for (const mat of recipe.materials) {
+      const matching = state.ownedMaterials
+        .filter(m => m.templateId === mat.templateId)
+        .slice(0, mat.count);
+      materialsToRemove = materialsToRemove.concat(matching.map(m => m.id));
+    }
+
+    const success = Math.random() * 100 < recipe.successRate;
+
+    let returnedMaterials: { templateId: string; count: number }[] = [];
+    if (!success && recipe.failureReturnRate > 0) {
+      for (const mat of recipe.materials) {
+        const returnCount = Math.floor(mat.count * recipe.failureReturnRate / 100);
+        if (returnCount > 0) {
+          returnedMaterials.push({ templateId: mat.templateId, count: returnCount });
+        }
+      }
+    }
+
+    let newPart: Part | undefined;
+    if (success) {
+      newPart = {
+        ...template,
+        id: generateId('part'),
+        templateId: template.id,
+        quality: rollPartQuality(recipe.targetRarity),
+        setId: template.setId,
+      };
+    }
+
+    const newMaterials: Material[] = [];
+    for (const rm of returnedMaterials) {
+      const matTemplate = getMaterialTemplate(rm.templateId);
+      if (matTemplate) {
+        for (let i = 0; i < rm.count; i++) {
+          newMaterials.push({
+            id: generateId('mat'),
+            templateId: matTemplate.id,
+            name: matTemplate.name,
+            description: matTemplate.description,
+            emoji: matTemplate.emoji,
+            rarity: matTemplate.rarity,
+            type: matTemplate.type,
+            element: matTemplate.element,
+          });
+        }
+      }
+    }
+
+    const logEntry: LabLogEntry = {
+      id: generateId('log'),
+      timestamp: Date.now(),
+      type: 'synthesis',
+      success,
+      description: success
+        ? `成功合成 ${template.name}`
+        : `合成 ${template.name} 失败，返还部分材料`,
+      rewards: success
+        ? [{ type: 'part', name: template.name, emoji: template.emoji, rarity: recipe.targetRarity }]
+        : undefined,
+    };
+
+    set(state => ({
+      player: { ...state.player, coins: state.player.coins - recipe.coinCost },
+      ownedMaterials: [
+        ...state.ownedMaterials.filter(m => !materialsToRemove.includes(m.id)),
+        ...newMaterials,
+      ],
+      ownedParts: success && newPart ? [...state.ownedParts, newPart] : state.ownedParts,
+      labData: {
+        ...state.labData,
+        synthesisCount: state.labData.synthesisCount + 1,
+        successCount: state.labData.successCount + (success ? 1 : 0),
+        failureCount: state.labData.failureCount + (success ? 0 : 1),
+        recentLogs: [
+          logEntry,
+          ...state.labData.recentLogs,
+        ].slice(0, 50),
+      },
+    }));
+
+    get().saveGame();
+
+    return {
+      success,
+      part: newPart,
+      returnedMaterials: returnedMaterials.length > 0 ? returnedMaterials : undefined,
+    };
+  },
+
+  canModifySkill: (recipeId: string, skillId: string): boolean => {
+    const state = get();
+    const recipe = getSkillModificationRecipe(recipeId);
+    if (!recipe) return false;
+
+    const skill = state.ownedSkills.find(s => s.id === skillId);
+    if (!skill) return false;
+    if (skill.templateId !== recipe.targetSkillTemplateId) return false;
+
+    if (state.player.coins < recipe.coinCost) return false;
+
+    for (const mat of recipe.materials) {
+      const owned = state.ownedMaterials.filter(m => m.templateId === mat.templateId).length;
+      if (owned < mat.count) return false;
+    }
+
+    return true;
+  },
+
+  modifySkill: (recipeId: string, skillId: string) => {
+    const state = get();
+    const recipe = getSkillModificationRecipe(recipeId);
+    if (!recipe) return { success: false };
+    if (!state.canModifySkill(recipeId, skillId)) return { success: false };
+
+    const skill = state.ownedSkills.find(s => s.id === skillId);
+    if (!skill) return { success: false };
+
+    let materialsToRemove: string[] = [];
+    for (const mat of recipe.materials) {
+      const matching = state.ownedMaterials
+        .filter(m => m.templateId === mat.templateId)
+        .slice(0, mat.count);
+      materialsToRemove = materialsToRemove.concat(matching.map(m => m.id));
+    }
+
+    const success = Math.random() * 100 < recipe.successRate;
+
+    let modifiedSkill: Skill | undefined;
+    let effects: {
+      damageBonus?: number;
+      cooldownReduction?: number;
+      statusEffectChanceBonus?: number;
+    } = {};
+
+    if (success) {
+      effects = {
+        damageBonus: recipe.effects.damageBonus,
+        cooldownReduction: recipe.effects.cooldownReduction,
+        statusEffectChanceBonus: recipe.effects.statusEffectChanceBonus,
+      };
+
+      modifiedSkill = {
+        ...skill,
+        damage: recipe.effects.damageBonus
+          ? Math.floor(skill.damage * (1 + recipe.effects.damageBonus / 100))
+          : skill.damage,
+        cooldown: recipe.effects.cooldownReduction
+          ? Math.max(1, skill.cooldown - recipe.effects.cooldownReduction)
+          : skill.cooldown,
+      };
+
+      if (recipe.effects.addStatusEffect && !modifiedSkill.statusEffect) {
+        modifiedSkill.statusEffect = recipe.effects.addStatusEffect;
+      } else if (recipe.effects.addStatusEffect && modifiedSkill.statusEffect) {
+        modifiedSkill.statusEffect = {
+          ...modifiedSkill.statusEffect,
+          chance: Math.min(100, modifiedSkill.statusEffect.chance + (recipe.effects.statusEffectChanceBonus || 0)),
+        };
+      }
+    }
+
+    const logEntry: LabLogEntry = {
+      id: generateId('log'),
+      timestamp: Date.now(),
+      type: 'modification',
+      success,
+      description: success
+        ? `成功改造 ${skill.name}`
+        : `改造 ${skill.name} 失败`,
+      rewards: success
+        ? [{ type: 'skill', name: skill.name, emoji: skill.emoji, rarity: skill.rarity }]
+        : undefined,
+    };
+
+    set(state => ({
+      player: { ...state.player, coins: state.player.coins - recipe.coinCost },
+      ownedMaterials: state.ownedMaterials.filter(m => !materialsToRemove.includes(m.id)),
+      ownedSkills: success && modifiedSkill
+        ? state.ownedSkills.map(s => (s.id === skillId ? modifiedSkill : s))
+        : state.ownedSkills,
+      labData: {
+        ...state.labData,
+        modificationCount: state.labData.modificationCount + 1,
+        successCount: state.labData.successCount + (success ? 1 : 0),
+        failureCount: state.labData.failureCount + (success ? 0 : 1),
+        recentLogs: [
+          logEntry,
+          ...state.labData.recentLogs,
+        ].slice(0, 50),
+      },
+    }));
+
+    get().saveGame();
+
+    return {
+      success,
+      skill: modifiedSkill,
+      effects: success ? effects : undefined,
+    };
+  },
+
+  canRunExperiment: (experimentId: string): boolean => {
+    const state = get();
+    const experiment = getProbabilityExperiment(experimentId);
+    if (!experiment) return false;
+
+    if (state.player.coins < experiment.coinCost) return false;
+
+    for (const mat of experiment.materials) {
+      const owned = state.ownedMaterials.filter(m => m.templateId === mat.templateId).length;
+      if (owned < mat.count) return false;
+    }
+
+    return true;
+  },
+
+  runExperiment: (experimentId: string) => {
+    const state = get();
+    const experiment = getProbabilityExperiment(experimentId);
+    if (!experiment) return { rewards: [] };
+    if (!state.canRunExperiment(experimentId)) return { rewards: [] };
+
+    let materialsToRemove: string[] = [];
+    for (const mat of experiment.materials) {
+      const matching = state.ownedMaterials
+        .filter(m => m.templateId === mat.templateId)
+        .slice(0, mat.count);
+      materialsToRemove = materialsToRemove.concat(matching.map(m => m.id));
+    }
+
+    const totalWeight = experiment.rewards.reduce((sum, r) => sum + r.weight, 0);
+    const roll = Math.random() * totalWeight;
+
+    let accumulated = 0;
+    let selectedReward = experiment.rewards[0];
+    for (const reward of experiment.rewards) {
+      accumulated += reward.weight;
+      if (roll <= accumulated) {
+        selectedReward = reward;
+        break;
+      }
+    }
+
+    const rewards: {
+      type: string;
+      name: string;
+      emoji: string;
+      rarity?: Rarity;
+      amount?: number;
+      item?: Part | Skill | Material;
+    }[] = [];
+
+    let newParts: Part[] = [];
+    let newSkills: Skill[] = [];
+    let newMaterials: Material[] = [];
+    let coinReward = 0;
+    let gemReward = 0;
+
+    switch (selectedReward.type) {
+      case 'coins':
+        coinReward = selectedReward.amount || 0;
+        rewards.push({
+          type: 'coins',
+          name: '金币',
+          emoji: '💰',
+          amount: coinReward,
+        });
+        break;
+
+      case 'gems':
+        gemReward = selectedReward.amount || 0;
+        rewards.push({
+          type: 'gems',
+          name: '宝石',
+          emoji: '💎',
+          amount: gemReward,
+        });
+        break;
+
+      case 'part': {
+        const rarity = selectedReward.rarity || 2;
+        const pool = PART_TEMPLATES.filter(p => p.rarity === rarity);
+        if (pool.length > 0) {
+          const template = pickRandom(pool);
+          const part: Part = {
+            ...template,
+            id: generateId('part'),
+            templateId: template.id,
+            quality: rollPartQuality(rarity),
+            setId: template.setId,
+          };
+          newParts.push(part);
+          rewards.push({
+            type: 'part',
+            name: template.name,
+            emoji: template.emoji,
+            rarity,
+            item: part,
+          });
+        }
+        break;
+      }
+
+      case 'skill': {
+        const rarity = selectedReward.rarity || 2;
+        let pool = SKILL_TEMPLATES.filter(s => s.rarity === rarity);
+        if (pool.length === 0) {
+          pool = SKILL_TEMPLATES.filter(s => s.rarity <= rarity);
+        }
+        if (pool.length > 0) {
+          const template = pickRandom(pool);
+          const skill: Skill = {
+            ...template,
+            id: generateId('skill'),
+            templateId: template.id,
+          };
+          newSkills.push(skill);
+          rewards.push({
+            type: 'skill',
+            name: template.name,
+            emoji: template.emoji,
+            rarity,
+            item: skill,
+          });
+        }
+        break;
+      }
+
+      case 'material': {
+        const templateId = selectedReward.templateId;
+        const amount = selectedReward.amount || 1;
+        const matTemplate = getLabMaterialTemplate(templateId) || getMaterialTemplate(templateId);
+        if (matTemplate) {
+          for (let i = 0; i < amount; i++) {
+            const material: Material = {
+              id: generateId('mat'),
+              templateId: matTemplate.id,
+              name: matTemplate.name,
+              description: matTemplate.description,
+              emoji: matTemplate.emoji,
+              rarity: matTemplate.rarity,
+              type: matTemplate.type as MaterialType,
+              element: 'element' in matTemplate ? matTemplate.element : undefined,
+            };
+            newMaterials.push(material);
+          }
+          rewards.push({
+            type: 'material',
+            name: matTemplate.name,
+            emoji: matTemplate.emoji,
+            rarity: matTemplate.rarity,
+            amount,
+          });
+        }
+        break;
+      }
+    }
+
+    const logEntry: LabLogEntry = {
+      id: generateId('log'),
+      timestamp: Date.now(),
+      type: 'experiment',
+      success: true,
+      description: `完成 ${experiment.name}，获得 ${rewards.map(r => r.name).join(', ')}`,
+      rewards: rewards.map(r => ({
+        type: r.type,
+        name: r.name,
+        emoji: r.emoji,
+        rarity: r.rarity,
+        amount: r.amount,
+      })),
+    };
+
+    set(state => ({
+      player: {
+        ...state.player,
+        coins: state.player.coins - experiment.coinCost + coinReward,
+        gems: state.player.gems + gemReward,
+      },
+      ownedMaterials: [
+        ...state.ownedMaterials.filter(m => !materialsToRemove.includes(m.id)),
+        ...newMaterials,
+      ],
+      ownedParts: [...state.ownedParts, ...newParts],
+      ownedSkills: [...state.ownedSkills, ...newSkills],
+      labData: {
+        ...state.labData,
+        experimentCount: state.labData.experimentCount + 1,
+        successCount: state.labData.successCount + 1,
+        recentLogs: [
+          logEntry,
+          ...state.labData.recentLogs,
+        ].slice(0, 50),
+      },
+    }));
+
+    get().saveGame();
+
+    return { rewards };
+  },
+
+  addLabLog: (log: Omit<LabLogEntry, 'id' | 'timestamp'>) => {
+    set(state => ({
+      labData: {
+        ...state.labData,
+        recentLogs: [
+          {
+            ...log,
+            id: generateId('log'),
+            timestamp: Date.now(),
+          },
+          ...state.labData.recentLogs,
+        ].slice(0, 50),
+      },
+    }));
+    get().saveGame();
+  },
+
+  clearLabLogs: () => {
+    set(state => ({
+      labData: {
+        ...state.labData,
+        recentLogs: [],
+      },
+    }));
     get().saveGame();
   },
 }));

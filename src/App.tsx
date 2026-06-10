@@ -12,6 +12,7 @@ import Season from '@/pages/Season';
 import GuildExpedition from '@/pages/GuildExpedition';
 import Story from '@/pages/Story';
 import Auction from '@/pages/Auction';
+import Lab from '@/pages/Lab';
 import { useGameStore } from '@/store/useGameStore';
 import { useSeasonStore } from '@/store/useSeasonStore';
 import { useGuildStore } from '@/store/useGuildStore';
@@ -76,6 +77,7 @@ function App() {
             <Route path="/season" element={<Season />} />
             <Route path="/guild" element={<GuildExpedition />} />
             <Route path="/story" element={<Story />} />
+            <Route path="/lab" element={<Lab />} />
           </Routes>
           <NavBar />
         </div>
