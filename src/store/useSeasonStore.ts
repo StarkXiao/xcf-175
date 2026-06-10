@@ -59,8 +59,7 @@ interface SeasonState {
 
 interface SeasonSavePayload {
   currentRank: RankInfo;
-  currentSeasonId: string;
-  currentSeasonIndex: number;
+  currentSeason: SeasonInfo;
   seasonHistory: SeasonRecord[];
   battleSummaries: SeasonBattleSummary[];
 }
@@ -81,7 +80,7 @@ export const useSeasonStore = create<SeasonState>((set, get) => ({
       const raw = localStorage.getItem(SEASON_SAVE_KEY);
       if (raw) {
         const data: SeasonSavePayload = JSON.parse(raw);
-        const season = createSeason(data.currentSeasonIndex - 1);
+        const season = data.currentSeason;
 
         if (isSeasonEnded(season)) {
           const record = archiveSeason(season, data.currentRank, data.battleSummaries || []);
@@ -181,6 +180,7 @@ export const useSeasonStore = create<SeasonState>((set, get) => ({
     set({
       currentRank: rank,
       lastRankChange: change,
+      lastMatchmaking: null,
       battleSummaries: [...state.battleSummaries, summary].slice(-100),
       protectionState: newProtection,
     });
@@ -267,8 +267,7 @@ export const useSeasonStore = create<SeasonState>((set, get) => ({
     const state = get();
     const payload: SeasonSavePayload = {
       currentRank: state.currentRank,
-      currentSeasonId: state.currentSeason.id,
-      currentSeasonIndex: parseInt(state.currentSeason.name.replace('S', '')),
+      currentSeason: state.currentSeason,
       seasonHistory: state.seasonHistory.slice(-20),
       battleSummaries: state.battleSummaries.slice(-50),
     };

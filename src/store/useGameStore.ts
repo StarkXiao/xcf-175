@@ -1434,7 +1434,9 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     const newWinStreak = result.isWin ? state.player.currentWinStreak + 1 : 0;
     const seasonStore = useSeasonStore.getState();
-    seasonStore.startMatchmaking();
+    if (!seasonStore.lastMatchmaking) {
+      seasonStore.startMatchmaking();
+    }
     seasonStore.processBattleResult(result.isWin, newWinStreak, dynamicContext.difficultyTier, result.opponentName, result.opponentAvatar);
     seasonStore.checkSeasonReset();
 
