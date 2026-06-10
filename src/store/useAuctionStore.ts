@@ -94,6 +94,21 @@ const generateAuctionId = () => generateId('auction');
 const generateBidId = () => generateId('bid');
 const generateTransactionId = () => generateId('tx');
 
+const buildRefundTx = (
+  auction: AuctionItem,
+  refundAmount: number,
+  newBalance: number
+): TransactionRecord => ({
+  id: generateTransactionId(),
+  timestamp: Date.now(),
+  type: 'refund',
+  amount: refundAmount,
+  description: `「${auction.itemData.name}」竞拍被超价，退还保证金`,
+  auctionId: auction.id,
+  itemName: auction.itemData.name,
+  balanceAfter: newBalance,
+});
+
 const RARITY_PRICE_MULTIPLIER: Record<Rarity, number> = {
   1: 1,
   2: 2.5,
@@ -288,6 +303,15 @@ export const useAuctionStore = create<AuctionState>((set, get) => ({
     if (gameStore.player.coins < amount) return { success: false, message: '金币不足' };
 
     const previousBidderId = auction.highestBidderId;
+    const previousBidAmount = auction.currentPrice;
+    const extraTransactions: TransactionRecord[] = [];
+
+    if (previousBidderId === PLAYER_ID && previousBidAmount > 0) {
+      gameStore.addCoins(previousBidAmount);
+      extraTransactions.push(
+        buildRefundTx(auction, previousBidAmount, gameStore.player.coins)
+      );
+    }
 
     const newBid: BidRecord = {
       id: generateBidId(),
@@ -297,6 +321,8 @@ export const useAuctionStore = create<AuctionState>((set, get) => ({
       timestamp: Date.now(),
     };
 
+    gameStore.spendCoins(amount);
+
     const newTx: TransactionRecord = {
       id: generateTransactionId(),
       timestamp: Date.now(),
@@ -305,13 +331,8 @@ export const useAuctionStore = create<AuctionState>((set, get) => ({
       description: `竞拍「${auction.itemData.name}」出价`,
       auctionId: auction.id,
       itemName: auction.itemData.name,
-      balanceAfter: gameStore.player.coins - amount,
+      balanceAfter: gameStore.player.coins,
     };
-
-    gameStore.spendCoins(amount);
-
-    if (previousBidderId && previousBidderId === PLAYER_ID) {
-    }
 
     set(state => ({
       auctions: state.auctions.map(a =>
@@ -327,10 +348,11 @@ export const useAuctionStore = create<AuctionState>((set, get) => ({
             }
           : a
       ),
-      transactions: [newTx, ...state.transactions].slice(0, 200),
+      transactions: [newTx, ...extraTransactions, ...state.transactions].slice(0, 200),
     }));
 
-    get().saveAuction();
+    gameStore.saveGame(true);
+    get().saveAuction(true);
     return { success: true, message: '出价成功！' };
   },
 
@@ -343,6 +365,15 @@ export const useAuctionStore = create<AuctionState>((set, get) => ({
     const buyoutPrice = Math.floor(auction.startingPrice * 3 + auction.currentPrice * 0.5);
     const gameStore = useGameStore.getState();
     if (gameStore.player.coins < buyoutPrice) return { success: false, message: '金币不足' };
+
+    const extraTransactions: TransactionRecord[] = [];
+    const prevBidderId = auction.highestBidderId;
+    const prevBidAmount = auction.currentPrice;
+
+    if (prevBidderId === PLAYER_ID && prevBidAmount > 0) {
+      gameStore.addCoins(prevBidAmount);
+      extraTransactions.push(buildRefundTx(auction, prevBidAmount, gameStore.player.coins));
+    }
 
     gameStore.spendCoins(buyoutPrice);
 
@@ -365,12 +396,22 @@ export const useAuctionStore = create<AuctionState>((set, get) => ({
 
     set(state => ({
       auctions: state.auctions.map(a =>
-        a.id === auctionId ? { ...a, status: 'won', highestBidderId: PLAYER_ID, highestBidderName: PLAYER_NAME, currentPrice: buyoutPrice, endsAt: Date.now() } : a
+        a.id === auctionId
+          ? {
+              ...a,
+              status: 'ended',
+              highestBidderId: PLAYER_ID,
+              highestBidderName: PLAYER_NAME,
+              currentPrice: buyoutPrice,
+              endsAt: Date.now(),
+            }
+          : a
       ),
-      transactions: [newTx, ...state.transactions].slice(0, 200),
+      transactions: [newTx, ...extraTransactions, ...state.transactions].slice(0, 200),
     }));
 
-    get().saveAuction();
+    gameStore.saveGame(true);
+    get().saveAuction(true);
     return { success: true, message: `成功购买「${auction.itemData.name}」！已添加到背包。` };
   },
 
@@ -407,13 +448,13 @@ export const useAuctionStore = create<AuctionState>((set, get) => ({
     };
 
     const fee = Math.floor(startingPrice * 0.05);
-    if (gameStore.player.coins < fee) return { success: false, message: `上架手续费不足（${fee} 💰）` };
+    if (gameStore.player.coins < fee) return { success: false, message: `上架手续费不足（需要 ${fee} 💰）` };
     gameStore.spendCoins(fee);
 
     if (itemType === 'part') {
-      gameStore.ownedParts = gameStore.ownedParts.filter(p => p.id !== itemId);
+      gameStore.removePart(itemId);
     } else {
-      gameStore.ownedSkills = gameStore.ownedSkills.filter(s => s.id !== itemId);
+      gameStore.removeSkill(itemId);
     }
 
     const newTx: TransactionRecord = {
@@ -432,7 +473,8 @@ export const useAuctionStore = create<AuctionState>((set, get) => ({
       transactions: [newTx, ...state.transactions].slice(0, 200),
     }));
 
-    get().saveAuction();
+    gameStore.saveGame(true);
+    get().saveAuction(true);
     return { success: true, message: '上架成功！' };
   },
 
@@ -595,45 +637,63 @@ export const useAuctionStore = create<AuctionState>((set, get) => ({
   simulateFakeBids: () => {
     const state = get();
     const now = Date.now();
+    const gameStore = useGameStore.getState();
+    const extraTransactions: TransactionRecord[] = [];
+    let needRefundGameSave = false;
 
-    set(state => ({
-      auctions: state.auctions.map(a => {
-        if (a.status !== 'active' || a.endsAt <= now) return a;
-        if (a.isPlayer && a.highestBidderId === PLAYER_ID) return a;
+    const updatedAuctions = state.auctions.map(a => {
+      if (a.status !== 'active' || a.endsAt <= now) return a;
 
-        const progress = clamp((now - a.createdAt) / (a.endsAt - a.createdAt), 0, 1);
-        let bidChance = 0.05 + progress * 0.25;
-        if (a.bids.length === 0 && progress > 0.3) bidChance += 0.15;
-        if (a.itemData.rarity >= 4) bidChance += 0.1;
+      const progress = clamp((now - a.createdAt) / (a.endsAt - a.createdAt), 0, 1);
+      let bidChance = 0.05 + progress * 0.25;
+      if (a.bids.length === 0 && progress > 0.3) bidChance += 0.15;
+      if (a.itemData.rarity >= 4) bidChance += 0.1;
 
-        if (Math.random() > bidChance) return a;
+      if (Math.random() > bidChance) return a;
 
-        const bidderName = pickRandom(FAKE_BIDDERS);
-        const bidderId = 'bidder_' + bidderName;
-        if (bidderId === a.highestBidderId) return a;
+      const bidderName = pickRandom(FAKE_BIDDERS);
+      const bidderId = 'bidder_' + bidderName;
+      if (bidderId === a.highestBidderId) return a;
 
-        const incrementMult = 1 + randomFloat(0.5, 2 + progress * 2);
-        const newAmount = a.currentPrice + Math.floor(a.minBidIncrement * incrementMult);
+      const incrementMult = 1 + randomFloat(0.5, 2 + progress * 2);
+      const newAmount = a.currentPrice + Math.floor(a.minBidIncrement * incrementMult);
 
-        const newBid: BidRecord = {
-          id: generateBidId(),
-          bidderId,
-          bidderName,
-          amount: newAmount,
-          timestamp: now,
-        };
+      const newBid: BidRecord = {
+        id: generateBidId(),
+        bidderId,
+        bidderName,
+        amount: newAmount,
+        timestamp: now,
+      };
 
-        return {
-          ...a,
-          currentPrice: newAmount,
-          bids: [...a.bids, newBid],
-          highestBidderId: bidderId,
-          highestBidderName: bidderName,
-          endsAt: a.endsAt - now < 60000 && progress > 0.9 ? now + randomInt(15, 45) * 1000 : a.endsAt,
-          priceFluctuationHistory: [...a.priceFluctuationHistory.slice(-20), { time: now, price: newAmount }],
-        };
-      }),
+      if (a.highestBidderId === PLAYER_ID && a.currentPrice > 0) {
+        gameStore.addCoins(a.currentPrice);
+        extraTransactions.push(buildRefundTx(a, a.currentPrice, gameStore.player.coins));
+        needRefundGameSave = true;
+      }
+
+      return {
+        ...a,
+        currentPrice: newAmount,
+        bids: [...a.bids, newBid],
+        highestBidderId: bidderId,
+        highestBidderName: bidderName,
+        endsAt: a.endsAt - now < 60000 && progress > 0.9 ? now + randomInt(15, 45) * 1000 : a.endsAt,
+        priceFluctuationHistory: [...a.priceFluctuationHistory.slice(-20), { time: now, price: newAmount }],
+      };
+    });
+
+    set(s => ({
+      auctions: updatedAuctions,
+      transactions: extraTransactions.length > 0
+        ? [...extraTransactions, ...s.transactions].slice(0, 200)
+        : s.transactions,
     }));
+
+    if (needRefundGameSave) {
+      gameStore.saveGame(true);
+      get().saveAuction(true);
+    }
   },
 
   getFilteredAuctions: () => {
