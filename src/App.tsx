@@ -11,10 +11,12 @@ import Codex from '@/pages/Codex';
 import Season from '@/pages/Season';
 import GuildExpedition from '@/pages/GuildExpedition';
 import Story from '@/pages/Story';
+import Auction from '@/pages/Auction';
 import { useGameStore } from '@/store/useGameStore';
 import { useSeasonStore } from '@/store/useSeasonStore';
 import { useGuildStore } from '@/store/useGuildStore';
 import { useStoryStore } from '@/store/useStoryStore';
+import { useAuctionStore } from '@/store/useAuctionStore';
 import { useEffect } from 'react';
 
 function App() {
@@ -22,13 +24,15 @@ function App() {
   const initSeason = useSeasonStore(state => state.initSeason);
   const initGuild = useGuildStore(state => state.initGuild);
   const initStory = useStoryStore(state => state.initStory);
+  const initAuction = useAuctionStore(state => state.initialize);
 
   useEffect(() => {
     initialize();
     initSeason();
     initGuild();
     initStory();
-  }, [initialize, initSeason, initGuild, initStory]);
+    initAuction();
+  }, [initialize, initSeason, initGuild, initStory, initAuction]);
 
   if (!isInitialized) {
     return (
@@ -68,6 +72,7 @@ function App() {
             <Route path="/shop" element={<Shop />} />
             <Route path="/ascend" element={<Ascend />} />
             <Route path="/codex" element={<Codex />} />
+            <Route path="/auction" element={<Auction />} />
             <Route path="/season" element={<Season />} />
             <Route path="/guild" element={<GuildExpedition />} />
             <Route path="/story" element={<Story />} />

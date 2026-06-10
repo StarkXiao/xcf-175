@@ -597,6 +597,56 @@ export interface RankTierConfig {
   rewards: SeasonReward[];
 }
 
+export type AuctionItemType = 'part' | 'skill';
+export type AuctionStatus = 'active' | 'ended' | 'won' | 'lost';
+
+export interface BidRecord {
+  id: string;
+  bidderId: string;
+  bidderName: string;
+  amount: number;
+  timestamp: number;
+}
+
+export interface AuctionItem {
+  id: string;
+  itemType: AuctionItemType;
+  itemData: Part | Skill;
+  sellerId: string;
+  sellerName: string;
+  startingPrice: number;
+  currentPrice: number;
+  minBidIncrement: number;
+  bids: BidRecord[];
+  highestBidderId: string | null;
+  highestBidderName: string | null;
+  createdAt: number;
+  endsAt: number;
+  status: AuctionStatus;
+  priceFluctuationHistory: { time: number; price: number }[];
+  isPlayer: boolean;
+}
+
+export type TransactionType = 'bid' | 'buyout' | 'sell' | 'refund' | 'fee' | 'reward';
+
+export interface TransactionRecord {
+  id: string;
+  timestamp: number;
+  type: TransactionType;
+  amount: number;
+  description: string;
+  auctionId?: string;
+  itemName?: string;
+  balanceAfter: number;
+}
+
+export interface AuctionFilter {
+  type: AuctionItemType | 'all';
+  rarity: Rarity | 0;
+  sortBy: 'time' | 'price_asc' | 'price_desc' | 'bids';
+  search?: string;
+}
+
 export interface SeasonReward {
   type: 'coins' | 'gems' | 'material';
   amount: number;
