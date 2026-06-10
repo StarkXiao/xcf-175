@@ -32,6 +32,8 @@ import type {
   SkillModificationRecipe,
   ProbabilityExperiment,
   LabMaterial,
+  CodexSaveData,
+  CodexMilestone,
 } from '@/types';
 import { ANIMAL_TEMPLATES } from '@/data/animals';
 import { PART_TEMPLATES } from '@/data/parts';
@@ -66,6 +68,7 @@ import {
 } from '@/data/lab';
 import { computePlayerStrengthScore, computeLineupSignature, calculateDynamicDifficulty } from '@/data/opponents';
 import { useSeasonStore } from '@/store/useSeasonStore';
+import { BOND_TEMPLATES, calculateBondLevel, CODEX_MILESTONES, createInitialCodexData } from '@/data/bonds';
 
 interface GameState {
   player: {
@@ -158,6 +161,7 @@ interface GameState {
   canBreakthrough: (id: string) => boolean;
 
   labData: LabSaveData;
+  codexData: CodexSaveData;
 
   synthesizePart: (recipeId: string) => {
     success: boolean;
@@ -191,6 +195,11 @@ interface GameState {
 
   addLabLog: (log: Omit<LabLogEntry, 'id' | 'timestamp'>) => void;
   clearLabLogs: () => void;
+
+  refreshBonds: () => void;
+  refreshCodexMilestones: () => void;
+  claimMilestoneReward: (milestoneId: string) => boolean;
+  getActiveBondBonuses: () => { hp: number; atk: number; def: number; spd: number; crit: number };
 }
 
 const DEFAULT_PITY_STATE: PityState = {
@@ -367,6 +376,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     unlockedRecipes: [],
     unlockedExperiments: [],
   },
+  codexData: createInitialCodexData(),
   isLoading: true,
   isNewPlayer: false,
   isInitialized: false,
@@ -464,12 +474,15 @@ export const useGameStore = create<GameState>((set, get) => ({
         unlockedRecipes: PART_SYNTHESIS_RECIPES.filter(r => r.targetRarity <= 3).map(r => r.id),
         unlockedExperiments: PROBABILITY_EXPERIMENTS.slice(0, 3).map(e => e.id),
       },
+      codexData: createInitialCodexData(),
       isLoading: false,
       isNewPlayer: true,
       isInitialized: true,
     });
 
     get().saveGame(true);
+    get().refreshBonds();
+    get().refreshCodexMilestones();
   },
 
   loadSave: (): boolean => {
@@ -558,19 +571,22 @@ export const useGameStore = create<GameState>((set, get) => ({
         unlockedRecipes: PART_SYNTHESIS_RECIPES.filter(r => r.targetRarity <= 3).map(r => r.id),
         unlockedExperiments: PROBABILITY_EXPERIMENTS.slice(0, 3).map(e => e.id),
       },
+      codexData: data.codexData || createInitialCodexData(),
       isLoading: false,
       isNewPlayer: false,
       isInitialized: true,
     });
 
     get().saveGame(true);
+    get().refreshBonds();
+    get().refreshCodexMilestones();
     return true;
   },
 
   saveGame: (force: boolean = false) => {
     const state = get();
     const saveData: SaveData = {
-      version: 8,
+      version: 9,
       timestamp: Date.now(),
       player: state.player,
       ownedAnimals: state.ownedAnimals,
@@ -586,6 +602,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       limitedPool: state.limitedPool,
       storyData: state.storyData || undefined,
       labData: state.labData,
+      codexData: state.codexData,
     };
 
     if (force) {
@@ -631,6 +648,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         unlockedRecipes: [],
         unlockedExperiments: [],
       },
+      codexData: createInitialCodexData(),
       isLoading: true,
       isNewPlayer: false,
       isInitialized: false,
@@ -640,6 +658,8 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   addAnimal: (animal: Animal) => {
     set(state => ({ ownedAnimals: [...state.ownedAnimals, animal] }));
+    get().refreshBonds();
+    get().refreshCodexMilestones();
     get().saveGame();
   },
 
@@ -1891,6 +1911,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         ],
       };
     });
+    get().refreshBonds();
+    get().refreshCodexMilestones();
     get().saveGame();
   },
 
@@ -2462,5 +2484,132 @@ export const useGameStore = create<GameState>((set, get) => ({
       },
     }));
     get().saveGame();
+  },
+
+  refreshBonds: () => {
+    const state = get();
+    const ownedTemplateIds = new Set(state.ownedAnimals.map(a => a.templateId));
+
+    const updatedBonds = BOND_TEMPLATES.map(bond => {
+      const level = calculateBondLevel(bond, ownedTemplateIds);
+      const isActivated = level > 0;
+      return {
+        bondId: bond.id,
+        currentLevel: level,
+        isActivated,
+      };
+    });
+
+    const totalBondsActivated = updatedBonds.filter(b => b.isActivated).length;
+    const totalCollected = ownedTemplateIds.size;
+
+    set(state => ({
+      codexData: {
+        ...state.codexData,
+        bonds: updatedBonds,
+        totalBondsActivated,
+        totalCollected,
+      },
+    }));
+
+    get().saveGame();
+  },
+
+  refreshCodexMilestones: () => {
+    const state = get();
+    const ownedTemplateIds = new Set(state.ownedAnimals.map(a => a.templateId));
+    const collected = ownedTemplateIds.size;
+    const activatedBonds = state.codexData.totalBondsActivated;
+    const hasR4 = state.ownedAnimals.some(a => a.rarity >= 4);
+    const hasR5 = state.ownedAnimals.some(a => a.rarity >= 5);
+
+    const updatedMilestones: CodexMilestone[] = CODEX_MILESTONES.map(template => {
+      let currentValue = 0;
+      if (template.type === 'collection') {
+        currentValue = collected;
+      } else if (template.type === 'bond') {
+        currentValue = activatedBonds;
+      } else if (template.type === 'rarity') {
+        if (template.id === 'milestone_rarity_4') currentValue = hasR4 ? 1 : 0;
+        if (template.id === 'milestone_rarity_5') currentValue = hasR5 ? 1 : 0;
+      }
+
+      const existing = state.codexData.milestones.find(m => m.id === template.id);
+      return {
+        ...template,
+        isClaimed: existing?.isClaimed || false,
+      };
+    });
+
+    set(state => ({
+      codexData: {
+        ...state.codexData,
+        milestones: updatedMilestones,
+      },
+    }));
+
+    get().saveGame();
+  },
+
+  claimMilestoneReward: (milestoneId: string): boolean => {
+    const state = get();
+    const milestone = state.codexData.milestones.find(m => m.id === milestoneId);
+    if (!milestone || milestone.isClaimed) return false;
+
+    const ownedTemplateIds = new Set(state.ownedAnimals.map(a => a.templateId));
+    let currentValue = 0;
+    if (milestone.type === 'collection') {
+      currentValue = ownedTemplateIds.size;
+    } else if (milestone.type === 'bond') {
+      currentValue = state.codexData.totalBondsActivated;
+    } else if (milestone.type === 'rarity') {
+      if (milestone.id === 'milestone_rarity_4') currentValue = state.ownedAnimals.some(a => a.rarity >= 4) ? 1 : 0;
+      if (milestone.id === 'milestone_rarity_5') currentValue = state.ownedAnimals.some(a => a.rarity >= 5) ? 1 : 0;
+    }
+
+    if (currentValue < milestone.targetValue) return false;
+
+    if (milestone.reward.type === 'coins') {
+      set(state => ({
+        player: { ...state.player, coins: state.player.coins + milestone.reward.amount },
+        codexData: {
+          ...state.codexData,
+          milestones: state.codexData.milestones.map(m =>
+            m.id === milestoneId ? { ...m, isClaimed: true } : m
+          ),
+        },
+      }));
+    } else {
+      set(state => ({
+        player: { ...state.player, gems: state.player.gems + milestone.reward.amount },
+        codexData: {
+          ...state.codexData,
+          milestones: state.codexData.milestones.map(m =>
+            m.id === milestoneId ? { ...m, isClaimed: true } : m
+          ),
+        },
+      }));
+    }
+
+    get().saveGame();
+    return true;
+  },
+
+  getActiveBondBonuses: () => {
+    const state = get();
+    const ownedTemplateIds = new Set(state.ownedAnimals.map(a => a.templateId));
+    const total = { hp: 0, atk: 0, def: 0, spd: 0, crit: 0 };
+    for (const bond of BOND_TEMPLATES) {
+      const level = calculateBondLevel(bond, ownedTemplateIds);
+      if (level > 0) {
+        const levelConfig = bond.levels[level - 1];
+        total.hp += levelConfig.stats.hp || 0;
+        total.atk += levelConfig.stats.atk || 0;
+        total.def += levelConfig.stats.def || 0;
+        total.spd += levelConfig.stats.spd || 0;
+        total.crit += levelConfig.stats.crit || 0;
+      }
+    }
+    return total;
   },
 }));

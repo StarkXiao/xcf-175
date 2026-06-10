@@ -26,6 +26,7 @@ import { generateId } from '@/utils/id';
 import { randomInt, pickRandom, chance } from '@/utils/random';
 import { BATTLE_CONSTANTS, RARITY_MULTIPLIER, STATUS_EFFECT_CONFIG, ELEMENT_NAMES, ELEMENT_EMOJIS } from './constants';
 import { getStarBonus, getBreakthroughBonus } from '@/data/ascendConfig';
+import { calculateAllBondBonuses } from '@/data/bonds';
 import {
   calculateDamage,
   calculateHeal,
@@ -62,7 +63,7 @@ interface ActionResult {
   extraTurn?: boolean;
 }
 
-export const calculateAnimalStats = (animal: Animal): {
+export const calculateAnimalStats = (animal: Animal, bondBonuses?: { hp?: number; atk?: number; def?: number; spd?: number; crit?: number }): {
   hp: number;
   atk: number;
   def: number;
@@ -101,6 +102,13 @@ export const calculateAnimalStats = (animal: Animal): {
   def += setStats.def;
   spd += setStats.spd;
 
+  if (bondBonuses) {
+    hp += bondBonuses.hp || 0;
+    atk += bondBonuses.atk || 0;
+    def += bondBonuses.def || 0;
+    spd += bondBonuses.spd || 0;
+  }
+
   return { hp, atk, def, spd };
 };
 
@@ -109,10 +117,11 @@ export const createBattleUnit = (
   side: BattleSide,
   position: number,
   formationPosition: FormationPosition = 'mid',
-  targetStrategy: TargetStrategy = 'lowestHp'
+  targetStrategy: TargetStrategy = 'lowestHp',
+  bondBonuses?: { hp?: number; atk?: number; def?: number; spd?: number; crit?: number }
 ): BattleUnit => {
   const template = getAnimalTemplate(animal.templateId);
-  const stats = calculateAnimalStats(animal);
+  const stats = calculateAnimalStats(animal, bondBonuses);
 
   const allPassives: PassiveEffect[] = [];
   const allComboTriggers: ComboTrigger[] = [];
@@ -1392,11 +1401,15 @@ export const simulateFullBattle = (
 
   const config = lineupConfig || { animals: [], actionPriority: 'speedFirst' as ActionPriority };
 
+  const ownedTemplateIds = new Set(playerAnimals.map(a => a.templateId));
+  const bondBonuses = calculateAllBondBonuses(ownedTemplateIds);
+  const hasBondBonus = (bondBonuses.hp + bondBonuses.atk + bondBonuses.def + bondBonuses.spd + bondBonuses.crit) > 0;
+
   const playerUnits = playerAnimals.map((animal, i) => {
     const animalConfig = config.animals.find(c => c.animalId === animal.id);
     const formationPos = animalConfig?.position || (i === 0 ? 'front' : i === 1 ? 'mid' : 'back') as FormationPosition;
     const targetStrat = animalConfig?.targetStrategy || 'lowestHp' as TargetStrategy;
-    return createBattleUnit(animal, 'player', i, formationPos, targetStrat);
+    return createBattleUnit(animal, 'player', i, formationPos, targetStrat, hasBondBonus ? bondBonuses : undefined);
   });
   const enemyUnits = enemyAnimals.map((animal, i) =>
     createBattleUnit(animal, 'enemy', i, 'mid', 'lowestHp')
@@ -1647,11 +1660,15 @@ export const simulateFullBattleWithCustomEnemies = (
 
   const config = lineupConfig || { animals: [], actionPriority: 'speedFirst' as ActionPriority };
 
+  const ownedTemplateIds2 = new Set(playerAnimals.map(a => a.templateId));
+  const bondBonuses2 = calculateAllBondBonuses(ownedTemplateIds2);
+  const hasBondBonus2 = (bondBonuses2.hp + bondBonuses2.atk + bondBonuses2.def + bondBonuses2.spd + bondBonuses2.crit) > 0;
+
   const playerUnits = playerAnimals.map((animal, i) => {
     const animalConfig = config.animals.find(c => c.animalId === animal.id);
     const formationPos = animalConfig?.position || (i === 0 ? 'front' : i === 1 ? 'mid' : 'back') as FormationPosition;
     const targetStrat = animalConfig?.targetStrategy || 'lowestHp' as TargetStrategy;
-    return createBattleUnit(animal, 'player', i, formationPos, targetStrat);
+    return createBattleUnit(animal, 'player', i, formationPos, targetStrat, hasBondBonus2 ? bondBonuses2 : undefined);
   });
 
   const enemyUnits = enemyAnimals.map((animal, i) => {

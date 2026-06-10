@@ -522,6 +522,7 @@ export interface SaveData {
   guildData?: GuildExpeditionSaveData;
   storyData?: StorySaveData;
   labData?: LabSaveData;
+  codexData?: CodexSaveData;
 }
 
 export interface SeasonSaveData {
@@ -1086,4 +1087,49 @@ export interface LabSaveData {
   recentLogs: LabLogEntry[];
   unlockedRecipes: string[];
   unlockedExperiments: string[];
+}
+
+export type BondCategory = 'species' | 'element' | 'special';
+
+export interface BondLevelConfig {
+  requiredCount: number;
+  stats: { hp?: number; atk?: number; def?: number; spd?: number; crit?: number };
+  description: string;
+}
+
+export interface BondTemplate {
+  id: string;
+  name: string;
+  description: string;
+  emoji: string;
+  category: BondCategory;
+  color: string;
+  animalTemplateIds: string[];
+  levels: BondLevelConfig[];
+}
+
+export interface BondEntry {
+  bondId: string;
+  currentLevel: number;
+  isActivated: boolean;
+}
+
+export type CodexMilestoneType = 'collection' | 'bond' | 'rarity';
+
+export interface CodexMilestone {
+  id: string;
+  type: CodexMilestoneType;
+  name: string;
+  description: string;
+  emoji: string;
+  targetValue: number;
+  reward: { type: 'coins' | 'gems'; amount: number };
+  isClaimed: boolean;
+}
+
+export interface CodexSaveData {
+  bonds: BondEntry[];
+  milestones: CodexMilestone[];
+  totalCollected: number;
+  totalBondsActivated: number;
 }

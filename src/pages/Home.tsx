@@ -1,12 +1,14 @@
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router';
-import { Swords, Users, BookOpen, ShoppingBag, Trophy, Sparkles, Star, TrendingUp, TrendingDown, Zap, Clock, ChevronRight, Crown, Map } from 'lucide-react';
+import { Swords, Users, BookOpen, ShoppingBag, Trophy, Sparkles, Star, TrendingUp, TrendingDown, Zap, Clock, ChevronRight, Crown, Map, Link2, Gift } from 'lucide-react';
 import { NeonButton } from '@/components/NeonButton';
 import { NeonCard } from '@/components/NeonCard';
 import { MiniChart } from '@/components/MiniChart';
 import { useGameStore } from '@/store/useGameStore';
 import { BATTLE_CONSTANTS, ELEMENT_EMOJIS, ELEMENT_COLORS, STAR_LEVEL_NAMES, BREAKTHROUGH_TIER_NAMES } from '@/engine/constants';
 import { getAnimalTemplate } from '@/data/animals';
+import { ANIMAL_TEMPLATES } from '@/data/animals';
+import { BOND_TEMPLATES, calculateBondLevel, calculateAllBondBonuses } from '@/data/bonds';
 import { calculateAnimalStats } from '@/engine/battleEngine';
 import { getRarityColor } from '@/utils/format';
 import { formatTime } from '@/utils/format';
@@ -15,7 +17,7 @@ import { formatRankDisplay, getRankEmoji, getRankColor } from '@/data/seasons';
 
 export default function Home() {
   const navigate = useNavigate();
-  const { lineup, ownedAnimals, startBattle, battleHistory, codex, player, gachaRecords } = useGameStore();
+  const { lineup, ownedAnimals, startBattle, battleHistory, codex, player, gachaRecords, codexData, claimMilestoneReward, refreshBonds, refreshCodexMilestones } = useGameStore();
   const { currentRank, currentSeason } = useSeasonStore();
   const canBattle = lineup.length > 0 && lineup.length <= BATTLE_CONSTANTS.MAX_TEAM_SIZE;
   const lastBattle = battleHistory[0];
@@ -142,6 +144,34 @@ export default function Home() {
     if (last < prev) return 'down';
     return 'flat';
   }, [assetTrendData]);
+
+  const ownedTemplateIds = useMemo(
+    () => new Set(ownedAnimals.map(a => a.templateId)),
+    [ownedAnimals]
+  );
+
+  const activeBondsList = useMemo(() => {
+    return BOND_TEMPLATES
+      .map(bond => ({ bond, level: calculateBondLevel(bond, ownedTemplateIds) }))
+      .filter(e => e.level > 0);
+  }, [ownedTemplateIds]);
+
+  const bondBonuses = useMemo(
+    () => calculateAllBondBonuses(ownedTemplateIds),
+    [ownedTemplateIds]
+  );
+
+  const claimableMilestones = useMemo(() => {
+    return codexData.milestones.filter(m => {
+      if (m.isClaimed) return false;
+      let progress = 0;
+      if (m.type === 'collection') progress = ownedTemplateIds.size;
+      else if (m.type === 'bond') progress = codexData.totalBondsActivated;
+      else if (m.id === 'milestone_rarity_4') progress = ownedAnimals.some(a => a.rarity >= 4) ? 1 : 0;
+      else if (m.id === 'milestone_rarity_5') progress = ownedAnimals.some(a => a.rarity >= 5) ? 1 : 0;
+      return progress >= m.targetValue;
+    });
+  }, [codexData, ownedTemplateIds, ownedAnimals]);
 
   return (
     <div className="min-h-screen pb-24 md:pb-8">
@@ -416,6 +446,121 @@ export default function Home() {
           </NeonCard>
         )}
 
+        <div className="grid md:grid-cols-2 gap-6 mb-8">
+          <NeonCard variant="pink" className="cursor-pointer hover:border-cyber-pink transition-colors" onClick={() => navigate('/codex')}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Link2 className="w-5 h-5 text-cyber-pink" />
+                <h3 className="font-cyber font-bold text-cyber-pink">羁绊加成</h3>
+                {activeBondsList.length > 0 && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyber-pink/15 text-cyber-pink border border-cyber-pink/30">
+                    {activeBondsList.length} 激活
+                  </span>
+                )}
+              </div>
+              <ChevronRight className="w-4 h-4 text-gray-500" />
+            </div>
+            {activeBondsList.length > 0 ? (
+              <div className="space-y-2">
+                <div className="grid grid-cols-5 gap-1.5 text-center text-[10px] mb-2">
+                  {[
+                    { label: 'HP', value: bondBonuses.hp, color: '#ff4444' },
+                    { label: 'ATK', value: bondBonuses.atk, color: '#ff8800' },
+                    { label: 'DEF', value: bondBonuses.def, color: '#00ccff' },
+                    { label: 'SPD', value: bondBonuses.spd, color: '#00ff66' },
+                    { label: 'CRIT', value: bondBonuses.crit, color: '#ffdd00' },
+                  ].map(stat => (
+                    <div key={stat.label} className="p-1 rounded bg-cyber-dark/60 border border-gray-700/30">
+                      <div className="text-gray-500">{stat.label}</div>
+                      <div className="font-cyber font-bold" style={{ color: stat.value > 0 ? stat.color : '#444' }}>+{stat.value}</div>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {activeBondsList.slice(0, 4).map(({ bond, level }) => (
+                    <span
+                      key={bond.id}
+                      className="text-[10px] px-1.5 py-0.5 rounded font-cyber font-bold border"
+                      style={{
+                        backgroundColor: `${bond.color}15`,
+                        color: bond.color,
+                        borderColor: `${bond.color}40`,
+                      }}
+                    >
+                      {bond.emoji} {bond.name} Lv.{level}
+                    </span>
+                  ))}
+                  {activeBondsList.length > 4 && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-400">
+                      +{activeBondsList.length - 4} 更多
+                    </span>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <p className="text-gray-500 text-xs">收集更多动物来激活羁绊加成</p>
+            )}
+          </NeonCard>
+
+          <NeonCard variant="yellow" className="cursor-pointer hover:border-cyber-yellow transition-colors" onClick={() => navigate('/codex')}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Trophy className="w-5 h-5 text-cyber-yellow" />
+                <h3 className="font-cyber font-bold text-cyber-yellow">图鉴成就</h3>
+                {claimableMilestones.length > 0 && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyber-yellow/15 text-cyber-yellow border border-cyber-yellow/30 animate-pulse">
+                    {claimableMilestones.length} 可领取
+                  </span>
+                )}
+              </div>
+              <ChevronRight className="w-4 h-4 text-gray-500" />
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center gap-3 text-xs">
+                <span className="text-gray-400">收集进度</span>
+                <div className="flex-1 h-2 bg-gray-800 rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-cyber-cyan transition-all"
+                    style={{ width: `${Math.round((ownedTemplateIds.size / ANIMAL_TEMPLATES.length) * 100)}%` }}
+                  />
+                </div>
+                <span className="text-cyber-cyan font-cyber font-bold">{ownedTemplateIds.size}/{ANIMAL_TEMPLATES.length}</span>
+              </div>
+              {claimableMilestones.length > 0 && (
+                <div className="space-y-1.5">
+                  {claimableMilestones.slice(0, 3).map(m => (
+                    <div key={m.id} className="flex items-center gap-2 p-1.5 rounded bg-cyber-dark/60 border border-cyber-yellow/20">
+                      <span className="text-sm">{m.emoji}</span>
+                      <span className="text-xs text-gray-300 flex-1">{m.name}</span>
+                      <span className="text-[10px] font-cyber font-bold" style={{ color: m.reward.type === 'coins' ? '#ffdd00' : '#00ccff' }}>
+                        {m.reward.type === 'coins' ? '💰' : '💎'}{m.reward.amount}
+                      </span>
+                      <NeonButton
+                        size="sm"
+                        variant={m.reward.type === 'coins' ? 'yellow' : 'cyan'}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          refreshBonds();
+                          refreshCodexMilestones();
+                          claimMilestoneReward(m.id);
+                          refreshCodexMilestones();
+                        }}
+                        className="!px-2 !py-0.5 !text-[10px]"
+                      >
+                        <Gift className="w-3 h-3 mr-0.5" />
+                        领取
+                      </NeonButton>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {claimableMilestones.length === 0 && (
+                <p className="text-gray-500 text-xs">完成收集与羁绊条件来解锁成就奖励</p>
+              )}
+            </div>
+          </NeonCard>
+        </div>
+
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           {[
             {
@@ -455,8 +600,8 @@ export default function Home() {
             },
             {
               icon: BookOpen,
-              title: `图鉴 (${codex.filter(c => c.isUnlocked).length})`,
-              desc: '查看收集进度与属性加成',
+              title: `图鉴与羁绊`,
+              desc: `收集 ${ownedTemplateIds.size}/${ANIMAL_TEMPLATES.length} · 羁绊 ${codexData.totalBondsActivated}/${BOND_TEMPLATES.length}`,
               action: () => navigate('/codex'),
               color: 'cyan' as const,
             },
