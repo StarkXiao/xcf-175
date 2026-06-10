@@ -80,6 +80,8 @@ interface GameState {
   resetGame: () => void;
 
   addAnimal: (animal: Animal) => void;
+  addPart: (part: Part) => void;
+  addSkill: (skill: Skill) => void;
   removeAnimal: (id: string) => void;
   levelUpAnimal: (id: string) => boolean;
 
@@ -499,6 +501,16 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   addAnimal: (animal: Animal) => {
     set(state => ({ ownedAnimals: [...state.ownedAnimals, animal] }));
+    get().saveGame();
+  },
+
+  addPart: (part: Part) => {
+    set(state => ({ ownedParts: [...state.ownedParts, part] }));
+    get().saveGame();
+  },
+
+  addSkill: (skill: Skill) => {
+    set(state => ({ ownedSkills: [...state.ownedSkills, skill] }));
     get().saveGame();
   },
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router';
 import {
   ArrowLeft, Swords, ShoppingBag, Users, Trophy, ChevronRight,
@@ -7,10 +7,9 @@ import {
 } from 'lucide-react';
 import { NeonButton } from '@/components/NeonButton';
 import { NeonCard } from '@/components/NeonCard';
-import { AnimalCard } from '@/components/AnimalCard';
 import { Empty } from '@/components/Empty';
 import { useGameStore } from '@/store/useGameStore';
-import { useGuildStore } from '@/store/useGuildStore';
+import { useGuildStore, type MemberBattleContribution } from '@/store/useGuildStore';
 import { GUILD_SHOP_ITEMS, GUILD_BOSS_TEMPLATES, getBossTemplate } from '@/data/guildExpedition';
 import {
   GUILD_EXPEDITION_CONFIG,
@@ -22,23 +21,103 @@ import {
 } from '@/engine/constants';
 import { getRarityColor, getRarityStars, getRarityName, formatNumber } from '@/utils/format';
 import { cn } from '@/lib/utils';
-import type { BossPhase, GuildSettlementReward, Animal } from '@/types';
+import { generateId, generateAnimalId } from '@/utils/id';
+import { pickRandom } from '@/utils/random';
+import { getAnimalTemplate } from '@/data/animals';
+import { ANIMAL_TEMPLATES } from '@/data/animals';
+import { PART_TEMPLATES, getPartTemplate, rollPartQuality } from '@/data/parts';
+import { SKILL_TEMPLATES, getSkillTemplate } from '@/data/skills';
+import { getMaterialTemplate } from '@/data/materials';
+import type { BossPhase, GuildSettlementReward, Animal, Part, Skill, Rarity, StarLevel, BreakthroughTier, PartQuality } from '@/types';
 
 type GuildTab = 'boss' | 'shop' | 'members' | 'settlement';
 
+function pickAnimalTemplateByRarity(targetRarity: Rarity) {
+  let pool = ANIMAL_TEMPLATES.filter(t => t.rarity === targetRarity);
+  if (pool.length === 0) pool = ANIMAL_TEMPLATES.filter(t => t.rarity <= targetRarity);
+  if (pool.length === 0) pool = ANIMAL_TEMPLATES;
+  return pickRandom(pool);
+}
+
+function pickPartTemplateByRarity(targetRarity: Rarity) {
+  let pool = PART_TEMPLATES.filter(p => p.rarity === targetRarity);
+  if (pool.length === 0) pool = PART_TEMPLATES.filter(p => p.rarity <= targetRarity);
+  if (pool.length === 0) pool = PART_TEMPLATES;
+  return pickRandom(pool);
+}
+
+function pickSkillTemplateByRarity(targetRarity: Rarity) {
+  let pool = SKILL_TEMPLATES.filter(s => s.rarity === targetRarity);
+  if (pool.length === 0) pool = SKILL_TEMPLATES.filter(s => s.rarity <= targetRarity);
+  if (pool.length === 0) pool = SKILL_TEMPLATES;
+  return pickRandom(pool);
+}
+
+function createAnimalFromRarity(rarity: Rarity): Animal {
+  const template = pickAnimalTemplateByRarity(rarity);
+  return {
+    id: generateAnimalId(),
+    templateId: template.id,
+    name: template.name,
+    rarity: template.rarity,
+    level: 1,
+    starLevel: 1 as StarLevel,
+    breakthroughTier: 0 as BreakthroughTier,
+    parts: [],
+    skills: [],
+    exp: 0,
+    expToNext: 100,
+  };
+}
+
+function createPartFromRarity(rarity: Rarity): Part {
+  const template = pickPartTemplateByRarity(rarity);
+  return {
+    ...template,
+    id: generateId('part'),
+    templateId: template.id,
+    quality: rollPartQuality(rarity) as PartQuality,
+    setId: template.setId,
+  };
+}
+
+function createSkillFromRarity(rarity: Rarity): Skill {
+  const template = pickSkillTemplateByRarity(rarity);
+  return {
+    ...template,
+    id: generateId('skill'),
+    templateId: template.id,
+  };
+}
+
+interface DeliveredItem {
+  type: 'animal' | 'part' | 'skill' | 'material' | 'coins' | 'gems' | 'guildToken';
+  name: string;
+  emoji: string;
+  rarity: Rarity;
+  amount?: number;
+}
+
 export default function GuildExpedition() {
   const navigate = useNavigate();
-  const { ownedAnimals, lineup, addCoins, addGems, addAnimal, addMaterials } = useGameStore();
+  const {
+    ownedAnimals, lineup,
+    addCoins, addGems, addAnimal, addPart, addSkill, addMaterials,
+  } = useGameStore();
   const guild = useGuildStore();
 
   const [activeTab, setActiveTab] = useState<GuildTab>('boss');
   const [showBattleResult, setShowBattleResult] = useState(false);
   const [battleResult, setBattleResult] = useState<{
     damage: number;
+    playerDamage: number;
+    memberDamage: number;
     phaseCleared: BossPhase[];
     bossDefeated: boolean;
     rewards: GuildSettlementReward[];
     log: { message: string; type: string }[];
+    memberContributions: MemberBattleContribution[];
+    cooperationBonusRate: number;
   } | null>(null);
   const [showTeamPicker, setShowTeamPicker] = useState(false);
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
@@ -47,6 +126,8 @@ export default function GuildExpedition() {
   const [showBossPicker, setShowBossPicker] = useState(false);
   const [isAttacking, setIsAttacking] = useState(false);
   const [selectedAnimals, setSelectedAnimals] = useState<string[]>(lineup.slice(0, GUILD_EXPEDITION_CONFIG.MAX_TEAM_SIZE));
+  const [deliveredItems, setDeliveredItems] = useState<DeliveredItem[]>([]);
+  const [showDeliveryResult, setShowDeliveryResult] = useState(false);
 
   useEffect(() => {
     if (!guild.isInitialized) {
@@ -59,15 +140,67 @@ export default function GuildExpedition() {
     if (currentWeek !== guild.currentWeekId && guild.weeklyContribution > 0) {
       const rewards = guild.processWeeklySettlement();
       if (rewards.length > 0) {
+        const items = deliverSettlementRewards(rewards);
         setSettlementRewards(rewards);
+        setDeliveredItems(items);
         setShowSettlementResult(true);
-        for (const r of rewards) {
-          if (r.type === 'coins') addCoins(r.amount);
-          if (r.type === 'gems') addGems(r.amount);
-        }
       }
     }
   }, [guild.currentWeekId]);
+
+  const deliverSettlementRewards = useCallback((rewards: GuildSettlementReward[]): DeliveredItem[] => {
+    const items: DeliveredItem[] = [];
+    for (const r of rewards) {
+      if (r.type === 'coins') {
+        addCoins(r.amount);
+        items.push({ type: 'coins', name: '金币', emoji: '💰', rarity: 1 as Rarity, amount: r.amount });
+      } else if (r.type === 'gems') {
+        addGems(r.amount);
+        items.push({ type: 'gems', name: '宝石', emoji: '💠', rarity: 3 as Rarity, amount: r.amount });
+      } else if (r.type === 'guildToken') {
+        guild.addGuildTokens(r.amount);
+        items.push({ type: 'guildToken', name: '公会币', emoji: '💎', rarity: 3 as Rarity, amount: r.amount });
+      } else if (r.type === 'material' && r.materialTemplateId) {
+        addMaterials([{ templateId: r.materialTemplateId!, count: r.amount }]);
+        const tmpl = getMaterialTemplate(r.materialTemplateId!);
+        items.push({
+          type: 'material',
+          name: tmpl?.name ?? '材料',
+          emoji: tmpl?.emoji ?? '📦',
+          rarity: (tmpl?.rarity ?? 2) as Rarity,
+          amount: r.amount,
+        });
+      }
+    }
+    return items;
+  }, [addCoins, addGems, addMaterials, guild]);
+
+  const deliverBattleRewards = useCallback((rewards: GuildSettlementReward[]): DeliveredItem[] => {
+    const items: DeliveredItem[] = [];
+    for (const r of rewards) {
+      if (r.type === 'coins') {
+        addCoins(r.amount);
+        items.push({ type: 'coins', name: '金币', emoji: '💰', rarity: 1 as Rarity, amount: r.amount });
+      } else if (r.type === 'gems') {
+        addGems(r.amount);
+        items.push({ type: 'gems', name: '宝石', emoji: '💠', rarity: 3 as Rarity, amount: r.amount });
+      } else if (r.type === 'guildToken') {
+        guild.addGuildTokens(r.amount);
+        items.push({ type: 'guildToken', name: '公会币', emoji: '💎', rarity: 3 as Rarity, amount: r.amount });
+      } else if (r.type === 'material' && r.materialTemplateId) {
+        addMaterials([{ templateId: r.materialTemplateId!, count: r.amount }]);
+        const tmpl = getMaterialTemplate(r.materialTemplateId!);
+        items.push({
+          type: 'material',
+          name: tmpl?.name ?? '材料',
+          emoji: tmpl?.emoji ?? '📦',
+          rarity: (tmpl?.rarity ?? 2) as Rarity,
+          amount: r.amount,
+        });
+      }
+    }
+    return items;
+  }, [addCoins, addGems, addMaterials, guild]);
 
   const handleAttackBoss = () => {
     if (!guild.activeBoss || guild.activeBoss.isDefeated) return;
@@ -84,19 +217,20 @@ export default function GuildExpedition() {
       const result = guild.attackBoss(animals, selectedAnimals);
 
       if (result.success) {
+        const items = deliverBattleRewards(result.rewards);
         setBattleResult({
           damage: result.damage,
+          playerDamage: (result as any).playerDamage ?? result.damage,
+          memberDamage: (result as any).memberDamage ?? 0,
           phaseCleared: result.phaseCleared,
           bossDefeated: result.bossDefeated,
           rewards: result.rewards,
-          log: result.log.slice(0, 20),
+          log: result.log.slice(0, 30),
+          memberContributions: result.memberContributions ?? [],
+          cooperationBonusRate: result.cooperationBonusRate ?? 1,
         });
+        setDeliveredItems(items);
         setShowBattleResult(true);
-
-        for (const r of result.rewards) {
-          if (r.type === 'coins') addCoins(r.amount);
-          if (r.type === 'gems') addGems(r.amount);
-        }
       }
 
       setIsAttacking(false);
@@ -112,22 +246,87 @@ export default function GuildExpedition() {
     const item = GUILD_SHOP_ITEMS.find(i => i.id === itemId);
     if (!item) return;
     const success = guild.purchaseShopItem(itemId);
-    if (success) {
-      if (item.itemType === 'material' && item.templateId === 'guild_coins_1000') {
+    if (!success) return;
+
+    const delivered: DeliveredItem[] = [];
+
+    if (item.itemType === 'animal') {
+      const animal = createAnimalFromRarity(item.rarity);
+      addAnimal(animal);
+      delivered.push({
+        type: 'animal',
+        name: animal.name,
+        emoji: '🥚',
+        rarity: animal.rarity,
+      });
+    } else if (item.itemType === 'part') {
+      const part = createPartFromRarity(item.rarity);
+      addPart(part);
+      delivered.push({
+        type: 'part',
+        name: part.name,
+        emoji: part.emoji,
+        rarity: part.rarity,
+      });
+    } else if (item.itemType === 'skill') {
+      const skill = createSkillFromRarity(item.rarity);
+      addSkill(skill);
+      delivered.push({
+        type: 'skill',
+        name: skill.name,
+        emoji: skill.emoji,
+        rarity: skill.rarity,
+      });
+    } else if (item.itemType === 'material') {
+      if (item.templateId === 'guild_coins_1000') {
         addCoins(1000);
+        delivered.push({ type: 'coins', name: '金币', emoji: '💰', rarity: 1 as Rarity, amount: 1000 });
+      } else if (item.templateId === 'mat_star_essence') {
+        addMaterials([{ templateId: 'mat_star_shard_3', count: 1 }]);
+        const tmpl = getMaterialTemplate('mat_star_shard_3');
+        delivered.push({
+          type: 'material',
+          name: tmpl?.name ?? '星辰精华',
+          emoji: tmpl?.emoji ?? '✨',
+          rarity: (tmpl?.rarity ?? 3) as Rarity,
+          amount: 1,
+        });
+      } else if (item.templateId === 'mat_bt_crystal') {
+        addMaterials([{ templateId: 'mat_bt_fire_2', count: 1 }]);
+        const tmpl = getMaterialTemplate('mat_bt_fire_2');
+        delivered.push({
+          type: 'material',
+          name: tmpl?.name ?? '突破水晶',
+          emoji: tmpl?.emoji ?? '💎',
+          rarity: (tmpl?.rarity ?? 2) as Rarity,
+          amount: 1,
+        });
+      } else {
+        addMaterials([{ templateId: item.templateId, count: 1 }]);
+        const tmpl = getMaterialTemplate(item.templateId);
+        if (tmpl) {
+          delivered.push({
+            type: 'material',
+            name: tmpl.name,
+            emoji: tmpl.emoji,
+            rarity: tmpl.rarity as Rarity,
+            amount: 1,
+          });
+        }
       }
     }
+
+    setDeliveredItems(delivered);
+    setShowDeliveryResult(true);
   };
 
   const handleSettlement = () => {
     const rewards = guild.processWeeklySettlement();
     if (rewards.length > 0) {
+      const items = deliverSettlementRewards(rewards);
       setSettlementRewards(rewards);
+      setDeliveredItems(items);
       setShowSettlementResult(true);
-      for (const r of rewards) {
-        if (r.type === 'coins') addCoins(r.amount);
-        if (r.type === 'gems') addGems(r.amount);
-      }
     }
   };
 
@@ -174,6 +373,11 @@ export default function GuildExpedition() {
             <Clock className="w-3 h-3" />
             <span>本周: 击杀{guild.weeklyBossKills} | 伤害{formatNumber(guild.weeklyBossDamage)}</span>
           </div>
+          {guild.expeditionTeams.length > 0 && (
+            <div className="text-xs text-cyber-cyan">
+              🤝 {guild.expeditionTeams.length}队协战 +{Math.round(guild.expeditionTeams.length * 12)}%伤害
+            </div>
+          )}
         </div>
       </div>
     </NeonCard>
@@ -363,12 +567,12 @@ export default function GuildExpedition() {
                                 <div className="flex items-center gap-2 text-xs text-gray-400">
                                   <span>ATK ×{phase.atkMultiplier}</span>
                                   <span>DEF ×{phase.defMultiplier}</span>
+                                  <span>{phase.specialSkillEmoji} {phase.specialSkillChance}%</span>
                                 </div>
                               </div>
                               {isCurrent && (
                                 <div className="mt-2 flex items-center gap-2 text-xs">
-                                  <span>{phase.specialSkillEmoji}</span>
-                                  <span className="text-cyber-pink font-bold">{phase.specialSkillName}</span>
+                                  <span className="text-cyber-pink font-bold">{phase.specialSkillEmoji} {phase.specialSkillName}</span>
                                   <span className="text-gray-500">释放概率 {phase.specialSkillChance}%</span>
                                   {phase.enrageTurns && (
                                     <span className="text-orange-400 ml-2">
@@ -380,6 +584,24 @@ export default function GuildExpedition() {
                             </div>
                           );
                         })}
+                      </div>
+                    )}
+
+                    {guild.expeditionTeams.length > 0 && (
+                      <div className="p-3 bg-cyber-cyan/5 border border-cyber-cyan/20 rounded-lg">
+                        <div className="text-xs text-cyber-cyan font-cyber font-bold mb-1">
+                          🤝 协战增益: +{Math.round((guild.expeditionTeams.length * 12))}% 伤害
+                        </div>
+                        <div className="flex gap-2">
+                          {guild.expeditionTeams.map(team => {
+                            const member = guild.members.find(m => m.id === team.memberId);
+                            if (!member) return null;
+                            return (
+                              <span key={team.memberId} className="text-sm">{member.avatar}</span>
+                            );
+                          })}
+                          <span className="text-xs text-gray-500">{guild.expeditionTeams.length}名成员出战</span>
+                        </div>
                       </div>
                     )}
                   </>
@@ -516,6 +738,13 @@ export default function GuildExpedition() {
                     <span className="text-xs" style={{ color: getRarityColor(item.rarity) }}>{getRarityStars(item.rarity)}</span>
                   </div>
                   <p className="text-xs text-gray-500 mt-0.5">{item.description}</p>
+                  <div className="text-[10px] text-gray-600 mt-0.5">
+                    → 实际获得: {item.itemType === 'animal' ? '随机动物加入背包' :
+                      item.itemType === 'part' ? '随机部件加入背包' :
+                      item.itemType === 'skill' ? '随机技能加入背包' :
+                      item.templateId === 'guild_coins_1000' ? '1000金币' :
+                      '材料加入背包'}
+                  </div>
                   <div className="flex items-center justify-between mt-2">
                     <div className="flex items-center gap-2 text-xs">
                       <span className="text-cyber-purple">💎 {item.cost}</span>
@@ -579,12 +808,16 @@ export default function GuildExpedition() {
                       <span>周贡献: <span className="text-cyber-cyan">{member.weeklyContribution}</span></span>
                       <span>总贡献: <span className="text-gray-300">{member.contribution}</span></span>
                     </div>
-                    {team && (
-                      <div className="text-xs text-gray-500 mt-1">
-                        编队: {team.animalIds.length > 0 ? `${team.animalIds.length}只动物` : '未编队'}
-                      </div>
-                    )}
                   </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {team ? (
+                    <span className="text-xs px-2 py-1 rounded bg-cyber-cyan/10 text-cyber-cyan border border-cyber-cyan/30">
+                      🤝 协战中
+                    </span>
+                  ) : (
+                    <span className="text-xs text-gray-600">未编队</span>
+                  )}
                 </div>
               </div>
             </NeonCard>
@@ -594,34 +827,55 @@ export default function GuildExpedition() {
 
       <NeonCard>
         <h4 className="font-cyber font-bold text-sm text-gray-400 mb-3">编队协作</h4>
-        <p className="text-xs text-gray-500 mb-4">
-          公会成员可以组建远征队伍，共同挑战Boss。每位成员的队伍会自动参与Boss战斗。
+        <p className="text-xs text-gray-500 mb-2">
+          公会成员编队后自动参与Boss战斗，造成真实伤害。每名协战成员额外提供12%全队伤害加成。
         </p>
+        <div className="p-3 bg-cyber-darker rounded-lg border border-cyber-cyan/20 mb-3">
+          <div className="text-xs text-cyber-cyan font-cyber font-bold">
+            当前协战加成: +{guild.expeditionTeams.length * 12}% 全队伤害
+          </div>
+          <div className="text-xs text-gray-500 mt-1">
+            {guild.expeditionTeams.length > 0
+              ? `${guild.expeditionTeams.length}名成员协战中`
+              : '暂无成员编队，邀请成员加入远征吧!'}
+          </div>
+        </div>
         <div className="space-y-3">
-          {guild.members.slice(0, 3).map(member => {
+          {guild.members.map(member => {
             const team = guild.expeditionTeams.find(t => t.memberId === member.id);
             return (
               <div key={member.id} className="flex items-center justify-between p-3 bg-cyber-darker rounded-lg border border-gray-800">
                 <div className="flex items-center gap-2">
                   <span className="text-xl">{member.avatar}</span>
-                  <span className="font-cyber text-sm">{member.name}</span>
+                  <div>
+                    <span className="font-cyber text-sm">{member.name}</span>
+                    <div className="text-xs text-gray-500">Lv.{member.level} | ATK {12 + member.level * 3}</div>
+                  </div>
                 </div>
                 <div className="flex items-center gap-2">
                   {team ? (
-                    <span className="text-xs text-cyber-cyan">{team.animalIds.length}只已编队</span>
+                    <NeonButton
+                      size="sm"
+                      variant="cyan"
+                      onClick={() => guild.removeExpeditionTeam(member.id)}
+                    >
+                      退出协战
+                    </NeonButton>
                   ) : (
-                    <span className="text-xs text-gray-600">未编队</span>
+                    <NeonButton
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        guild.setExpeditionTeam(
+                          member.id,
+                          ['auto_1', 'auto_2', 'auto_3'],
+                          ['front', 'mid', 'back'] as any,
+                        );
+                      }}
+                    >
+                      加入协战
+                    </NeonButton>
                   )}
-                  <NeonButton
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => {
-                      setSelectedMemberId(member.id);
-                      setShowTeamPicker(true);
-                    }}
-                  >
-                    编队
-                  </NeonButton>
                 </div>
               </div>
             );
@@ -700,6 +954,10 @@ export default function GuildExpedition() {
               ))}
             </div>
           </div>
+
+          <div className="text-xs text-gray-500 p-2 bg-cyber-darker rounded-lg">
+            💡 周常结算时，所有奖励（金币/宝石/公会币/材料）将自动发放到背包
+          </div>
         </div>
       </NeonCard>
 
@@ -734,6 +992,30 @@ export default function GuildExpedition() {
       )}
     </div>
   );
+
+  const renderDeliveredItems = (items: DeliveredItem[]) => {
+    if (items.length === 0) return null;
+    return (
+      <div className="mt-3 p-3 bg-cyber-darker rounded-lg border border-gray-800">
+        <h4 className="font-cyber text-xs text-cyber-green mb-2">📦 已发放到背包</h4>
+        <div className="flex gap-2 flex-wrap">
+          {items.map((item, i) => (
+            <span
+              key={i}
+              className="text-xs px-2 py-1 rounded border"
+              style={{
+                color: getRarityColor(item.rarity),
+                borderColor: `${getRarityColor(item.rarity)}40`,
+                background: `${getRarityColor(item.rarity)}10`,
+              }}
+            >
+              {item.emoji} {item.name}{item.amount ? ` ×${item.amount}` : ''}
+            </span>
+          ))}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="min-h-screen pb-24 md:pb-8">
@@ -790,6 +1072,11 @@ export default function GuildExpedition() {
             <h2 className="text-3xl font-cyber font-black bg-gradient-to-r from-cyber-pink via-cyber-purple to-cyber-cyan bg-clip-text text-transparent animate-pulse">
               远征战斗中...
             </h2>
+            {guild.expeditionTeams.length > 0 && (
+              <p className="text-cyber-cyan mt-2 font-cyber text-sm">
+                🤝 {guild.expeditionTeams.length}名成员协战中
+              </p>
+            )}
           </div>
         </div>
       )}
@@ -802,39 +1089,53 @@ export default function GuildExpedition() {
             </h2>
 
             <div className="space-y-4 mb-6">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <div className="p-3 bg-cyber-darker rounded-lg text-center">
-                  <div className="text-xs text-gray-500 mb-1">造成伤害</div>
+                  <div className="text-xs text-gray-500 mb-1">总伤害</div>
                   <div className="font-cyber font-bold text-cyber-pink text-xl">{formatNumber(battleResult.damage)}</div>
                 </div>
                 <div className="p-3 bg-cyber-darker rounded-lg text-center">
-                  <div className="text-xs text-gray-500 mb-1">突破阶段</div>
-                  <div className="font-cyber font-bold text-cyber-yellow text-xl">
-                    {battleResult.phaseCleared.length > 0 ? battleResult.phaseCleared.join(', ') : '无'}
-                  </div>
+                  <div className="text-xs text-gray-500 mb-1">玩家伤害</div>
+                  <div className="font-cyber font-bold text-cyber-yellow text-lg">{formatNumber(battleResult.playerDamage)}</div>
+                </div>
+                <div className="p-3 bg-cyber-darker rounded-lg text-center">
+                  <div className="text-xs text-gray-500 mb-1">协战伤害</div>
+                  <div className="font-cyber font-bold text-cyber-cyan text-lg">{formatNumber(battleResult.memberDamage)}</div>
                 </div>
               </div>
 
-              {battleResult.rewards.length > 0 && (
+              {battleResult.cooperationBonusRate > 1 && (
+                <div className="p-2 bg-cyber-cyan/10 border border-cyber-cyan/30 rounded-lg text-center text-xs text-cyber-cyan">
+                  🤝 协战加成: +{Math.round((battleResult.cooperationBonusRate - 1) * 100)}% 伤害
+                </div>
+              )}
+
+              {battleResult.memberContributions.length > 0 && (
                 <div>
-                  <h4 className="font-cyber text-sm text-gray-400 mb-2">获得奖励</h4>
-                  <div className="flex gap-2 flex-wrap">
-                    {battleResult.rewards.map((r, i) => (
-                      <span
-                        key={i}
-                        className={cn(
-                          'px-3 py-1.5 rounded-lg font-cyber text-sm',
-                          r.type === 'guildToken' ? 'bg-cyber-purple/15 text-cyber-purple' :
-                          r.type === 'gems' ? 'bg-cyber-cyan/15 text-cyber-cyan' :
-                          'bg-cyber-yellow/15 text-cyber-yellow'
-                        )}
-                      >
-                        {r.type === 'guildToken' ? '💎' : r.type === 'gems' ? '💠' : '💰'} {r.amount}
-                      </span>
+                  <h4 className="font-cyber text-sm text-cyber-cyan mb-2">👥 成员贡献</h4>
+                  <div className="space-y-1">
+                    {battleResult.memberContributions.map(c => (
+                      <div key={c.memberId} className="flex items-center justify-between p-2 bg-cyber-darker rounded-lg">
+                        <span className="text-sm">{c.memberAvatar} {c.memberName}</span>
+                        <div className="text-xs text-gray-400">
+                          <span className="text-cyber-pink">{formatNumber(c.damage)}伤害</span>
+                          {c.critCount > 0 && <span className="text-cyber-yellow ml-2">💥×{c.critCount}</span>}
+                        </div>
+                      </div>
                     ))}
                   </div>
                 </div>
               )}
+
+              {battleResult.phaseCleared.length > 0 && (
+                <div className="p-2 bg-cyber-pink/10 border border-cyber-pink/30 rounded-lg text-center">
+                  <span className="text-sm text-cyber-pink font-cyber font-bold">
+                    🔄 突破阶段: {battleResult.phaseCleared.join(', ')}
+                  </span>
+                </div>
+              )}
+
+              {renderDeliveredItems(deliveredItems)}
 
               <div>
                 <h4 className="font-cyber text-sm text-gray-400 mb-2">战斗日志</h4>
@@ -974,9 +1275,42 @@ export default function GuildExpedition() {
         </div>
       )}
 
+      {showDeliveryResult && deliveredItems.length > 0 && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <div className="bg-cyber-dark border-2 border-cyber-purple rounded-2xl max-w-lg w-full p-6">
+            <h3 className="text-xl font-cyber font-black text-center mb-4 bg-gradient-to-r from-cyber-purple to-cyber-cyan bg-clip-text text-transparent">
+              🎁 兑换成功!
+            </h3>
+            <div className="space-y-2 mb-4">
+              {deliveredItems.map((item, i) => (
+                <div key={i} className="flex items-center justify-between p-3 bg-cyber-darker rounded-lg">
+                  <span className="text-sm" style={{ color: getRarityColor(item.rarity) }}>
+                    {item.emoji} {item.name}
+                  </span>
+                  <span className={cn(
+                    'font-cyber font-bold text-sm',
+                    item.type === 'coins' ? 'text-cyber-yellow' :
+                    item.type === 'gems' ? 'text-cyber-cyan' :
+                    item.type === 'guildToken' ? 'text-cyber-purple' :
+                    'text-green-400'
+                  )}>
+                    {item.amount ? `×${item.amount}` : '已加入背包'}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-center">
+              <NeonButton variant="purple" onClick={() => setShowDeliveryResult(false)}>
+                确认
+              </NeonButton>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showSettlementResult && (
         <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4">
-          <div className="bg-cyber-dark border-2 border-cyber-yellow rounded-2xl max-w-lg w-full p-8">
+          <div className="bg-cyber-dark border-2 border-cyber-yellow rounded-2xl max-w-lg w-full p-8 max-h-[90vh] overflow-y-auto">
             <h2 className="text-3xl font-cyber font-black text-center mb-4 bg-gradient-to-r from-cyber-yellow to-cyber-pink bg-clip-text text-transparent">
               🏆 周常结算完成!
             </h2>
@@ -984,18 +1318,19 @@ export default function GuildExpedition() {
               {settlementRewards.map((r, i) => (
                 <div key={i} className="flex items-center justify-between p-3 bg-cyber-darker rounded-lg">
                   <span className="text-sm text-gray-300">
-                    {r.type === 'coins' ? '💰 金币' : r.type === 'gems' ? '💠 宝石' : '💎 公会币'}
+                    {r.type === 'coins' ? '💰 金币' : r.type === 'gems' ? '💠 宝石' : r.type === 'guildToken' ? '💎 公会币' : '📦 材料'}
                   </span>
                   <span className={cn(
                     'font-cyber font-bold',
-                    r.type === 'coins' ? 'text-cyber-yellow' : r.type === 'gems' ? 'text-cyber-cyan' : 'text-cyber-purple'
+                    r.type === 'coins' ? 'text-cyber-yellow' : r.type === 'gems' ? 'text-cyber-cyan' : r.type === 'guildToken' ? 'text-cyber-purple' : 'text-green-400'
                   )}>
                     +{r.amount}
                   </span>
                 </div>
               ))}
             </div>
-            <div className="flex justify-center">
+            {renderDeliveredItems(deliveredItems)}
+            <div className="flex justify-center mt-4">
               <NeonButton variant="yellow" onClick={() => setShowSettlementResult(false)}>
                 领取奖励
               </NeonButton>

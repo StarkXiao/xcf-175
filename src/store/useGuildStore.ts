@@ -4,6 +4,7 @@ import type {
   GuildMember,
   ExpeditionTeam,
   BossPhase,
+  BossPhaseConfig,
   GuildExpeditionState,
   GuildExpeditionSaveData,
   GuildContributionRecord,
@@ -17,9 +18,16 @@ import { GUILD_EXPEDITION_CONFIG, GUILD_LEVEL_NAMES } from '@/engine/constants';
 import { generateId } from '@/utils/id';
 import { pickRandom } from '@/utils/random';
 import { getAnimalTemplate } from '@/data/animals';
-import { computePlayerStrengthScore } from '@/data/opponents';
 
 const GUILD_SAVE_KEY = 'neon_colosseum_guild_v1';
+
+export interface MemberBattleContribution {
+  memberId: string;
+  memberName: string;
+  memberAvatar: string;
+  damage: number;
+  critCount: number;
+}
 
 interface GuildState extends GuildExpeditionState {
   initGuild: () => void;
@@ -36,6 +44,8 @@ interface GuildState extends GuildExpeditionState {
     log: BattleLogEntry[];
     playerUnits: BattleUnit[];
     bossUnit: BattleUnit;
+    memberContributions: MemberBattleContribution[];
+    cooperationBonusRate: number;
   };
   setExpeditionTeam: (memberId: string, animalIds: string[], positions: import('@/types').FormationPosition[]) => void;
   removeExpeditionTeam: (memberId: string) => void;
@@ -89,26 +99,87 @@ function computeBossStats(templateId: string, guildLevel: number) {
   };
 }
 
+function createMemberUnit(
+  member: GuildMember,
+  team: ExpeditionTeam,
+  idx: number,
+): BattleUnit {
+  const baseAtk = 12 + member.level * 3;
+  const baseHp = 60 + member.level * 12;
+  const baseDef = 5 + member.level * 2;
+  const baseSpd = 10 + Math.floor(member.level * 0.5);
+
+  return {
+    id: `member_${member.id}`,
+    animalId: member.id,
+    name: member.name,
+    emoji: member.avatar,
+    element: 'fire' as const,
+    maxHp: baseHp,
+    currentHp: baseHp,
+    atk: baseAtk,
+    def: baseDef,
+    spd: baseSpd,
+    skills: [],
+    isAlive: true,
+    side: 'player' as const,
+    position: idx + 10,
+    formationPosition: (idx === 0 ? 'front' : idx === 1 ? 'mid' : 'back') as import('@/types').FormationPosition,
+    targetStrategy: 'lowestHp' as const,
+    buffs: [],
+    statusEffects: [],
+    comboCount: 0,
+    isSkipTurn: false,
+    passives: [],
+    activatedCombos: [],
+    triggeredPassives: [],
+    activeSetBonuses: [],
+  };
+}
+
+function computePhaseHpThreshold(bossTemplate: typeof GUILD_BOSS_TEMPLATES[number], bossMaxHp: number): { phase: BossPhase; hpThreshold: number }[] {
+  const sorted = [...bossTemplate.phases].sort((a, b) => a.phase - b.phase);
+  const thresholds: { phase: BossPhase; hpThreshold: number }[] = [];
+
+  for (let i = 0; i < sorted.length; i++) {
+    const p = sorted[i];
+    if (i === 0) continue;
+    const pct = p.hpPercent / 100;
+    thresholds.push({ phase: p.phase, hpThreshold: Math.floor(bossMaxHp * pct) });
+  }
+
+  return thresholds;
+}
+
 function simulateBossBattle(
   playerAnimals: Animal[],
   bossTemplate: typeof GUILD_BOSS_TEMPLATES[number],
   bossInstance: GuildBossInstance,
   guildLevel: number,
+  expeditionTeams: ExpeditionTeam[],
+  members: GuildMember[],
 ): {
   totalDamage: number;
+  playerDamage: number;
+  memberDamage: number;
   phaseCleared: BossPhase[];
   bossDefeated: boolean;
   playerAlive: boolean;
   playerUnits: BattleUnit[];
+  memberUnits: BattleUnit[];
   bossUnit: BattleUnit;
   log: BattleLogEntry[];
+  memberContributions: MemberBattleContribution[];
+  cooperationBonusRate: number;
 } {
-  const levelMult = 1 + (guildLevel - 1) * 0.15;
   const bossStats = computeBossStats(bossTemplate.id, guildLevel)!;
 
-  const phaseConfig = bossTemplate.phases.find(p => p.phase === bossInstance.currentPhase);
-  const phaseAtkMult = phaseConfig?.atkMultiplier ?? 1;
-  const phaseDefMult = phaseConfig?.defMultiplier ?? 1;
+  let currentPhase: BossPhase = bossInstance.currentPhase;
+  const getPhaseConfig = (phase: BossPhase): BossPhaseConfig => {
+    return bossTemplate.phases.find(p => p.phase === phase) ?? bossTemplate.phases[0];
+  };
+
+  const phaseConfig = getPhaseConfig(currentPhase);
 
   const bossUnit: BattleUnit = {
     id: 'boss',
@@ -118,8 +189,8 @@ function simulateBossBattle(
     element: bossTemplate.element,
     maxHp: bossInstance.currentHp,
     currentHp: bossInstance.currentHp,
-    atk: Math.floor(bossStats.atk * phaseAtkMult),
-    def: Math.floor(bossStats.def * phaseDefMult),
+    atk: Math.floor(bossStats.atk * phaseConfig.atkMultiplier),
+    def: Math.floor(bossStats.def * phaseConfig.defMultiplier),
     spd: bossStats.spd,
     skills: [],
     isAlive: true,
@@ -143,23 +214,17 @@ function simulateBossBattle(
     const starMult = 1 + (animal.starLevel - 1) * 0.2;
     const btMult = 1 + animal.breakthroughTier * 0.15;
 
-    let bonusHp = 0, bonusAtk = 0, bonusDef = 0, bonusSpd = 0;
-    for (const ep of animal.parts) {
-      const pt = ep.partId;
-      bonusHp += template?.baseHp ? 0 : 0;
-    }
-
     return {
       id: animal.id,
       animalId: animal.id,
       name: animal.name,
       emoji: template?.emoji ?? '🐾',
       element: template?.element ?? 'fire',
-      maxHp: Math.floor((template?.baseHp ?? 80) * levelMultP * starMult) + bonusHp,
-      currentHp: Math.floor((template?.baseHp ?? 80) * levelMultP * starMult) + bonusHp,
-      atk: Math.floor((template?.baseAtk ?? 15) * levelMultP * starMult * btMult) + bonusAtk,
-      def: Math.floor((template?.baseDef ?? 8) * levelMultP * starMult * btMult) + bonusDef,
-      spd: Math.floor((template?.baseSpd ?? 14) * levelMultP) + bonusSpd,
+      maxHp: Math.floor((template?.baseHp ?? 80) * levelMultP * starMult),
+      currentHp: Math.floor((template?.baseHp ?? 80) * levelMultP * starMult),
+      atk: Math.floor((template?.baseAtk ?? 15) * levelMultP * starMult * btMult),
+      def: Math.floor((template?.baseDef ?? 8) * levelMultP * starMult * btMult),
+      spd: Math.floor((template?.baseSpd ?? 14) * levelMultP),
       skills: animal.skills.map(s => ({
         skillId: s.skillId,
         name: s.skillId,
@@ -186,76 +251,163 @@ function simulateBossBattle(
     };
   });
 
+  const memberUnits: BattleUnit[] = [];
+  const memberContribMap = new Map<string, { damage: number; critCount: number; name: string; avatar: string }>();
+
+  for (const team of expeditionTeams) {
+    const member = members.find(m => m.id === team.memberId);
+    if (!member) continue;
+    const unit = createMemberUnit(member, team, memberUnits.length);
+    memberUnits.push(unit);
+    memberContribMap.set(member.id, { damage: 0, critCount: 0, name: member.name, avatar: member.avatar });
+  }
+
+  const participatingTeams = expeditionTeams.length;
+  const cooperationBonusRate = 1 + participatingTeams * 0.12;
+
+  const phaseThresholds = computePhaseHpThreshold(bossTemplate, bossInstance.maxHp);
+
   const phaseCleared: BossPhase[] = [];
   const log: BattleLogEntry[] = [];
   let totalDamage = 0;
+  let playerDamage = 0;
+  let memberDamage = 0;
   let currentBossHp = bossInstance.currentHp;
-  const bossMaxHpForPhase = bossInstance.maxHp;
+  let turnsInPhase = 0;
+  let enrageActive = false;
 
-  const phaseThresholds = bossTemplate.phases.map(p => ({
-    phase: p.phase,
-    threshold: Math.floor(bossInstance.maxHp * (p.hpPercent === 100 ? 1 : p === bossTemplate.phases[bossTemplate.phases.length - 1] ? 0 : p.hpPercent / 100)),
-  }));
+  if (participatingTeams > 0) {
+    log.push({
+      timestamp: Date.now(),
+      type: 'info',
+      turn: 0,
+      message: `🤝 ${participatingTeams}名公会成员协战! 全队伤害 +${Math.round((cooperationBonusRate - 1) * 100)}%`,
+    });
+  }
 
   for (let turn = 0; turn < 30; turn++) {
     const alivePlayers = playerUnits.filter(u => u.isAlive);
-    if (alivePlayers.length === 0) break;
+    const aliveMembers = memberUnits.filter(u => u.isAlive);
+    const allAlive = [...alivePlayers, ...aliveMembers].sort((a, b) => b.spd - a.spd);
+
+    if (allAlive.length === 0) break;
     if (currentBossHp <= 0) break;
 
-    for (const unit of alivePlayers.sort((a, b) => b.spd - a.spd)) {
+    turnsInPhase++;
+
+    for (const unit of allAlive) {
       if (!unit.isAlive || currentBossHp <= 0) continue;
 
-      const critRoll = Math.random() * 100 < 15;
-      const baseDmg = Math.max(1, unit.atk * 2 - bossUnit.def * 0.5);
-      const dmg = Math.floor(baseDmg * (critRoll ? 1.8 : 1) * (0.9 + Math.random() * 0.2));
+      const isMemberUnit = unit.id.startsWith('member_');
+      const critRoll = Math.random() * 100 < (isMemberUnit ? 12 : 15);
+      let baseDmg = Math.max(1, unit.atk * 2 - bossUnit.def * 0.5);
+      baseDmg = Math.floor(baseDmg * cooperationBonusRate * (critRoll ? 1.8 : 1) * (0.9 + Math.random() * 0.2));
 
-      currentBossHp -= dmg;
-      totalDamage += dmg;
+      currentBossHp -= baseDmg;
+      totalDamage += baseDmg;
 
+      if (isMemberUnit) {
+        memberDamage += baseDmg;
+        const memberId = unit.id.replace('member_', '');
+        const contrib = memberContribMap.get(memberId);
+        if (contrib) {
+          contrib.damage += baseDmg;
+          if (critRoll) contrib.critCount++;
+        }
+      } else {
+        playerDamage += baseDmg;
+      }
+
+      const sourceLabel = isMemberUnit ? `${unit.emoji}[协]${unit.name}` : `${unit.emoji}${unit.name}`;
       log.push({
         timestamp: Date.now(),
         type: critRoll ? 'crit' : 'damage',
         turn: turn + 1,
-        message: `${unit.emoji}${unit.name} 对 ${bossTemplate.emoji}${bossTemplate.name} 造成 ${dmg} 伤害${critRoll ? ' 💥暴击!' : ''}`,
+        message: `${sourceLabel} 对 ${bossTemplate.emoji}${bossTemplate.name} 造成 ${baseDmg} 伤害${critRoll ? ' 💥暴击!' : ''}`,
         sourceId: unit.id,
         sourceName: unit.name,
         targetId: 'boss',
         targetName: bossTemplate.name,
-        value: dmg,
+        value: baseDmg,
         isCrit: critRoll,
       });
 
       for (const pt of phaseThresholds) {
-        if (pt.phase > bossInstance.currentPhase && currentBossHp <= pt.threshold && !phaseCleared.includes(pt.phase)) {
+        if (pt.phase > currentPhase && currentBossHp <= pt.hpThreshold && !phaseCleared.includes(pt.phase)) {
           phaseCleared.push(pt.phase);
+          const oldPhase = currentPhase;
+          currentPhase = pt.phase;
+          turnsInPhase = 0;
+          enrageActive = false;
+
+          const newPhaseConfig = getPhaseConfig(pt.phase);
+          bossUnit.atk = Math.floor(bossStats.atk * newPhaseConfig.atkMultiplier);
+          bossUnit.def = Math.floor(bossStats.def * newPhaseConfig.defMultiplier);
+
           log.push({
             timestamp: Date.now(),
             type: 'info',
             turn: turn + 1,
-            message: `⚠️ ${bossTemplate.name} 进入第${pt.phase}阶段!`,
+            message: `⚠️ ${bossTemplate.name} 进入第${pt.phase}阶段! ATK×${newPhaseConfig.atkMultiplier} DEF×${newPhaseConfig.defMultiplier}`,
           });
+
+          if (newPhaseConfig.specialSkill) {
+            log.push({
+              timestamp: Date.now(),
+              type: 'info',
+              turn: turn + 1,
+              message: `${newPhaseConfig.specialSkillEmoji} 解锁技能: ${newPhaseConfig.specialSkillName} (${newPhaseConfig.specialSkillChance}%)`,
+            });
+          }
+
+          if (newPhaseConfig.enrageTurns) {
+            log.push({
+              timestamp: Date.now(),
+              type: 'info',
+              turn: turn + 1,
+              message: `⏰ 狂暴倒计时: ${newPhaseConfig.enrageTurns}回合 (+${newPhaseConfig.enrageAtkBonus}ATK)`,
+            });
+          }
         }
       }
     }
 
     if (currentBossHp <= 0) break;
 
-    const bossDmg = Math.floor(bossUnit.atk * (1.5 + Math.random() * 0.5));
-    const targets = alivePlayers.sort((a, b) => a.currentHp - b.currentHp);
-    const target = targets[0];
+    const activePhaseConfig = getPhaseConfig(currentPhase);
+
+    if (activePhaseConfig.enrageTurns && !enrageActive && turnsInPhase >= activePhaseConfig.enrageTurns) {
+      enrageActive = true;
+      const enrageBonus = activePhaseConfig.enrageAtkBonus ?? 0;
+      bossUnit.atk += enrageBonus;
+      log.push({
+        timestamp: Date.now(),
+        type: 'info',
+        turn: turn + 1,
+        message: `🔥🔥🔥 ${bossTemplate.name} 狂暴化! ATK +${enrageBonus}`,
+      });
+    }
+
+    const allTargets = [...playerUnits.filter(u => u.isAlive), ...memberUnits.filter(u => u.isAlive)];
+    if (allTargets.length === 0) break;
+
+    const bossBaseDmg = Math.floor(bossUnit.atk * (1.5 + Math.random() * 0.5));
+    const sortedTargets = [...allTargets].sort((a, b) => a.currentHp - b.currentHp);
+    const target = sortedTargets[0];
     if (target) {
-      const actualDmg = Math.max(1, bossDmg - target.def * 0.3);
+      const actualDmg = Math.max(1, bossBaseDmg - target.def * 0.3);
       target.currentHp -= actualDmg;
       if (target.currentHp <= 0) {
         target.currentHp = 0;
         target.isAlive = false;
       }
 
+      const targetLabel = target.id.startsWith('member_') ? `${target.emoji}[协]${target.name}` : `${target.emoji}${target.name}`;
       log.push({
         timestamp: Date.now(),
         type: 'attack',
         turn: turn + 1,
-        message: `${bossTemplate.emoji}${bossTemplate.name} 攻击 ${target.emoji}${target.name} 造成 ${Math.floor(actualDmg)} 伤害`,
+        message: `${bossTemplate.emoji}${bossTemplate.name} 攻击 ${targetLabel} 造成 ${Math.floor(actualDmg)} 伤害`,
         sourceId: 'boss',
         sourceName: bossTemplate.name,
         targetId: target.id,
@@ -264,9 +416,10 @@ function simulateBossBattle(
       });
     }
 
-    if (phaseConfig && phaseConfig.specialSkill && Math.random() * 100 < phaseConfig.specialSkillChance) {
+    if (activePhaseConfig.specialSkill && Math.random() * 100 < activePhaseConfig.specialSkillChance) {
       const skillDmg = Math.floor(bossUnit.atk * 2);
-      for (const t of targets) {
+      const aliveTargets = [...playerUnits.filter(u => u.isAlive), ...memberUnits.filter(u => u.isAlive)];
+      for (const t of aliveTargets) {
         if (!t.isAlive) continue;
         const aoeDmg = Math.max(1, Math.floor(skillDmg * (0.6 + Math.random() * 0.4) - t.def * 0.2));
         t.currentHp -= aoeDmg;
@@ -274,12 +427,13 @@ function simulateBossBattle(
           t.currentHp = 0;
           t.isAlive = false;
         }
+        const tLabel = t.id.startsWith('member_') ? `${t.emoji}[协]${t.name}` : `${t.emoji}${t.name}`;
         log.push({
           timestamp: Date.now(),
           type: 'skill',
           turn: turn + 1,
-          message: `${bossTemplate.emoji}${phaseConfig.specialSkillEmoji}${phaseConfig.specialSkillName}! 对 ${t.emoji}${t.name} 造成 ${aoeDmg} 伤害`,
-          skillName: phaseConfig.specialSkillName,
+          message: `${bossTemplate.emoji}${activePhaseConfig.specialSkillEmoji}${activePhaseConfig.specialSkillName}! 对 ${tLabel} 造成 ${aoeDmg} 伤害`,
+          skillName: activePhaseConfig.specialSkillName,
         });
       }
     }
@@ -290,14 +444,30 @@ function simulateBossBattle(
 
   bossUnit.currentHp = Math.max(0, currentBossHp);
 
+  const memberContributions: MemberBattleContribution[] = [];
+  for (const [memberId, data] of memberContribMap) {
+    memberContributions.push({
+      memberId,
+      memberName: data.name,
+      memberAvatar: data.avatar,
+      damage: data.damage,
+      critCount: data.critCount,
+    });
+  }
+
   return {
     totalDamage,
+    playerDamage,
+    memberDamage,
     phaseCleared,
     bossDefeated,
     playerAlive,
     playerUnits,
+    memberUnits,
     bossUnit,
     log,
+    memberContributions,
+    cooperationBonusRate,
   };
 }
 
@@ -375,47 +545,29 @@ export const useGuildStore = create<GuildState>((set, get) => ({
 
   attackBoss: (playerAnimals: Animal[], lineupAnimalIds: string[]) => {
     const state = get();
-    if (!state.activeBoss || state.activeBoss.isDefeated) {
-      return {
-        success: false,
-        damage: 0,
-        phaseCleared: [],
-        bossDefeated: false,
-        rewards: [],
-        log: [],
-        playerUnits: [],
-        bossUnit: {} as BattleUnit,
-      };
-    }
+    const emptyResult = {
+      success: false as const,
+      damage: 0,
+      phaseCleared: [] as BossPhase[],
+      bossDefeated: false,
+      rewards: [] as GuildSettlementReward[],
+      log: [] as BattleLogEntry[],
+      playerUnits: [] as BattleUnit[],
+      bossUnit: {} as BattleUnit,
+      memberContributions: [] as MemberBattleContribution[],
+      cooperationBonusRate: 1,
+    };
 
-    if (state.activeBoss.attemptsUsed >= GUILD_EXPEDITION_CONFIG.MAX_ATTEMPTS_PER_BOSS) {
-      return {
-        success: false,
-        damage: 0,
-        phaseCleared: [],
-        bossDefeated: false,
-        rewards: [],
-        log: [],
-        playerUnits: [],
-        bossUnit: {} as BattleUnit,
-      };
-    }
+    if (!state.activeBoss || state.activeBoss.isDefeated) return emptyResult;
+    if (state.activeBoss.attemptsUsed >= GUILD_EXPEDITION_CONFIG.MAX_ATTEMPTS_PER_BOSS) return emptyResult;
 
     const template = getBossTemplate(state.activeBoss.templateId);
-    if (!template) {
-      return {
-        success: false,
-        damage: 0,
-        phaseCleared: [],
-        bossDefeated: false,
-        rewards: [],
-        log: [],
-        playerUnits: [],
-        bossUnit: {} as BattleUnit,
-      };
-    }
+    if (!template) return emptyResult;
 
-    const result = simulateBossBattle(playerAnimals, template, state.activeBoss, state.guildLevel);
+    const result = simulateBossBattle(
+      playerAnimals, template, state.activeBoss, state.guildLevel,
+      state.expeditionTeams, state.members,
+    );
 
     const rewards: GuildSettlementReward[] = [];
     for (const phase of result.phaseCleared) {
@@ -447,12 +599,23 @@ export const useGuildStore = create<GuildState>((set, get) => ({
         currentPhase: result.phaseCleared.length > 0 ? (Math.max(...result.phaseCleared) as BossPhase) : boss.currentPhase,
         totalDamageDealt: boss.totalDamageDealt + result.totalDamage,
         isDefeated: result.bossDefeated,
-        defeatedPhases: [...boss.defeatedPhases, ...result.phaseCleared],
+        defeatedPhases: [...new Set([...boss.defeatedPhases, ...result.phaseCleared])],
         attemptsUsed: boss.attemptsUsed + 1,
       };
 
+      const updatedMembers = state.members.map(m => {
+        const contrib = result.memberContributions.find(c => c.memberId === m.id);
+        if (!contrib) return m;
+        return {
+          ...m,
+          weeklyContribution: m.weeklyContribution + Math.floor(contrib.damage * 0.05),
+          contribution: m.contribution + Math.floor(contrib.damage * 0.05),
+        };
+      });
+
       return {
         activeBoss: newBoss,
+        members: updatedMembers,
         guildTokens: state.guildTokens + tokenGain,
         weeklyContribution: state.weeklyContribution + contributionGain,
         totalContribution: state.totalContribution + contributionGain,
@@ -476,6 +639,8 @@ export const useGuildStore = create<GuildState>((set, get) => ({
       log: result.log,
       playerUnits: result.playerUnits,
       bossUnit: result.bossUnit,
+      memberContributions: result.memberContributions,
+      cooperationBonusRate: result.cooperationBonusRate,
     };
   },
 
@@ -558,6 +723,7 @@ export const useGuildStore = create<GuildState>((set, get) => ({
       weeklyBossKills: 0,
       contributionHistory: [...state.contributionHistory, record].slice(-20),
       lastSettlementTime: Date.now(),
+      members: state.members.map(m => ({ ...m, weeklyContribution: 0 })),
     }));
 
     get().resetWeeklyShop();
