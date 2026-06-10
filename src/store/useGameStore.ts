@@ -480,6 +480,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       isInitialized: true,
     });
 
+    initialAnimals.forEach(a => get().updateCodex(a.templateId));
     get().saveGame(true);
     get().refreshBonds();
     get().refreshCodexMilestones();
@@ -577,6 +578,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       isInitialized: true,
     });
 
+    const ownedTemplateIds = new Set(repairedAnimals.map(a => a.templateId));
+    ownedTemplateIds.forEach(id => get().updateCodex(id));
     get().saveGame(true);
     get().refreshBonds();
     get().refreshCodexMilestones();
@@ -658,9 +661,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   addAnimal: (animal: Animal) => {
     set(state => ({ ownedAnimals: [...state.ownedAnimals, animal] }));
-    get().refreshBonds();
-    get().refreshCodexMilestones();
-    get().saveGame();
+    get().updateCodex(animal.templateId);
   },
 
   addPart: (part: Part) => {
@@ -684,10 +685,15 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   removeAnimal: (id: string) => {
+    const animal = get().ownedAnimals.find(a => a.id === id);
+    const templateId = animal?.templateId;
     set(state => ({
       ownedAnimals: state.ownedAnimals.filter(a => a.id !== id),
       lineup: state.lineup.filter(lid => lid !== id),
     }));
+    if (templateId) {
+      get().updateCodex(templateId);
+    }
     get().refreshBonds();
     get().refreshCodexMilestones();
     get().saveGame();
@@ -1115,13 +1121,10 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     set(state => ({
       player: { ...state.player, coins: state.player.coins - GACHA_COSTS.animal },
-      ownedAnimals: [...state.ownedAnimals, animal],
       pityState: { ...state.pityState, animal: newPity },
       gachaRecords: [...state.gachaRecords, gachaRecord],
     }));
-    get().refreshBonds();
-    get().refreshCodexMilestones();
-    get().saveGame();
+    get().addAnimal(animal);
     return { animal, isNew, isPity };
   },
 
@@ -1328,18 +1331,19 @@ export const useGameStore = create<GameState>((set, get) => ({
       gachaRecords: [...state.gachaRecords, gachaRecord],
     };
 
-    if (itemType === 'animal') {
-      stateUpdates.ownedAnimals = [...state.ownedAnimals, item as Animal];
-    } else if (itemType === 'part') {
+    if (itemType === 'part') {
       stateUpdates.ownedParts = [...state.ownedParts, item as Part];
-    } else {
+    } else if (itemType === 'skill') {
       stateUpdates.ownedSkills = [...state.ownedSkills, item as Skill];
     }
 
     set(stateUpdates as Partial<GameState>);
-    get().refreshBonds();
-    get().refreshCodexMilestones();
-    get().saveGame();
+
+    if (itemType === 'animal') {
+      get().addAnimal(item as Animal);
+    } else {
+      get().saveGame();
+    }
     return { item, itemType, isNew, isPity, isFeatured };
   },
 
@@ -1564,6 +1568,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     }));
 
     if (newAnimals.length > 0) {
+      const uniqueTemplateIds = [...new Set(newAnimals.map(a => a.templateId))];
+      uniqueTemplateIds.forEach(id => get().updateCodex(id));
       get().refreshBonds();
       get().refreshCodexMilestones();
     }

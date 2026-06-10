@@ -553,7 +553,6 @@ export const useStoryStore = create<StoryState>((set, get) => ({
                 expToNext: 100,
               };
               gameStore.addAnimal(animal);
-              gameStore.updateCodex(reward.templateId);
             }
           }
           break;
