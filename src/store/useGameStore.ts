@@ -69,7 +69,7 @@ import {
 import { computePlayerStrengthScore, computeLineupSignature, calculateDynamicDifficulty } from '@/data/opponents';
 import { useSeasonStore } from '@/store/useSeasonStore';
 import { useArenaStore } from '@/store/useArenaStore';
-import { trackBattle, trackGacha, trackLevelUp, trackLineupEdit } from '@/store/useTaskStore';
+import { useTaskStore, trackBattle, trackGacha, trackLevelUp, trackLineupEdit, trackAscend, trackBreakthrough } from '@/store/useTaskStore';
 import { BOND_TEMPLATES, calculateBondLevel, CODEX_MILESTONES, createInitialCodexData } from '@/data/bonds';
 
 interface GameState {
@@ -620,6 +620,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   resetGame: () => {
     clearSave();
     useArenaStore.getState().resetArena();
+    useTaskStore.getState().resetTasks();
     set({
       player: {
         id: '',
@@ -1817,6 +1818,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     get().updateCodex(animal.templateId);
     get().saveGame();
+    trackAscend();
     return true;
   },
 
@@ -1869,6 +1871,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     get().updateCodex(animal.templateId);
     get().saveGame();
+    trackBreakthrough();
     return true;
   },
 

@@ -3,6 +3,24 @@ import type { TaskSaveData, TaskProgress, TaskTemplate, TaskReward, TaskCategory
 import { TASK_TEMPLATES, getTaskTemplate, getDailyTasks } from '@/data/tasks';
 import { useGameStore } from '@/store/useGameStore';
 import { loadFromLocalStorage, saveToLocalStorage, throttledSave } from '@/utils/save';
+import { STORAGE_THROTTLE } from '@/engine/constants';
+
+const TASK_SAVE_KEY = 'neon_colosseum_tasks_v1';
+
+let taskSaveTimeout: NodeJS.Timeout | null = null;
+
+const throttledSaveTaskData = (data: TaskSaveData): void => {
+  if (taskSaveTimeout) {
+    clearTimeout(taskSaveTimeout);
+  }
+  taskSaveTimeout = setTimeout(() => {
+    try {
+      localStorage.setItem(TASK_SAVE_KEY, JSON.stringify(data));
+    } catch (error) {
+      console.error('Failed to save task data:', error);
+    }
+  }, STORAGE_THROTTLE);
+};
 
 interface TaskState {
   progress: Record<string, TaskProgress>;
@@ -16,6 +34,7 @@ interface TaskState {
 
   checkDailyReset: () => void;
   resetDailyTasks: () => void;
+  resetTasks: () => void;
 
   getTaskProgress: (taskId: string) => TaskProgress | undefined;
   getTasksByCategory: (category: TaskCategory) => TaskTemplate[];
@@ -103,42 +122,47 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   },
 
   loadTaskData: (): boolean => {
-    const data = loadFromLocalStorage();
-    if (!data || !data.taskData) return false;
+    try {
+      const raw = localStorage.getItem(TASK_SAVE_KEY);
+      if (!raw) return false;
+      const taskData = JSON.parse(raw) as TaskSaveData;
+      const progress = { ...initializeAllProgress() };
 
-    const taskData = data.taskData as TaskSaveData;
-    const progress = { ...initializeAllProgress() };
+      Object.keys(taskData.progress).forEach(taskId => {
+        if (progress[taskId]) {
+          progress[taskId] = { ...progress[taskId], ...taskData.progress[taskId] };
+        }
+      });
 
-    Object.keys(taskData.progress).forEach(taskId => {
-      if (progress[taskId]) {
-        progress[taskId] = { ...progress[taskId], ...taskData.progress[taskId] };
-      }
-    });
+      set({
+        progress,
+        lastDailyReset: taskData.lastDailyReset || 0,
+        completedAchievements: taskData.completedAchievements || [],
+      });
 
-    set({
-      progress,
-      lastDailyReset: taskData.lastDailyReset || 0,
-      completedAchievements: taskData.completedAchievements || [],
-    });
-
-    return true;
+      return true;
+    } catch (error) {
+      console.error('Failed to load task data:', error);
+      return false;
+    }
   },
 
   saveTaskData: (force: boolean = false) => {
     const state = get();
-    const data = loadFromLocalStorage();
-    if (data) {
-      const taskData: TaskSaveData = {
-        progress: state.progress,
-        lastDailyReset: state.lastDailyReset,
-        completedAchievements: state.completedAchievements,
-      };
-      const saveData = { ...data, taskData };
+    const taskData: TaskSaveData = {
+      progress: state.progress,
+      lastDailyReset: state.lastDailyReset,
+      completedAchievements: state.completedAchievements,
+    };
+
+    try {
       if (force) {
-        saveToLocalStorage(saveData);
+        localStorage.setItem(TASK_SAVE_KEY, JSON.stringify(taskData));
       } else {
-        throttledSave(saveData);
+        throttledSaveTaskData(taskData);
       }
+    } catch (error) {
+      console.error('Failed to save task data:', error);
     }
   },
 
@@ -163,6 +187,20 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       };
     });
     get().saveTaskData();
+  },
+
+  resetTasks: () => {
+    try {
+      localStorage.removeItem(TASK_SAVE_KEY);
+    } catch (error) {
+      console.error('Failed to reset task data:', error);
+    }
+    set({
+      progress: initializeAllProgress(),
+      lastDailyReset: Date.now(),
+      completedAchievements: [],
+      isInitialized: true,
+    });
   },
 
   getTaskProgress: (taskId: string) => {
@@ -387,6 +425,8 @@ export const trackBattle = (isWin: boolean) => {
     store.incrementTaskProgress('daily_battle_win_1');
     store.incrementTaskProgress('achievement_first_win', 1);
   }
+
+  store.refreshDerivedTasks();
 };
 
 export const trackGacha = (rarity: number) => {
@@ -400,14 +440,28 @@ export const trackGacha = (rarity: number) => {
   if (rarity >= 5) {
     store.completeTask('gacha_rarity_5');
   }
+
+  store.refreshDerivedTasks();
 };
 
 export const trackLevelUp = () => {
   const store = useTaskStore.getState();
   store.incrementTaskProgress('daily_levelup_1');
+  store.refreshDerivedTasks();
 };
 
 export const trackLineupEdit = () => {
   const store = useTaskStore.getState();
   store.incrementTaskProgress('daily_lineup_edit');
+  store.refreshDerivedTasks();
+};
+
+export const trackAscend = () => {
+  const store = useTaskStore.getState();
+  store.refreshDerivedTasks();
+};
+
+export const trackBreakthrough = () => {
+  const store = useTaskStore.getState();
+  store.refreshDerivedTasks();
 };
