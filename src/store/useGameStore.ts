@@ -34,6 +34,7 @@ import type {
   LabMaterial,
   CodexSaveData,
   CodexMilestone,
+  PlayerData,
 } from '@/types';
 import { ANIMAL_TEMPLATES } from '@/data/animals';
 import { PART_TEMPLATES } from '@/data/parts';
@@ -73,17 +74,7 @@ import { useTaskStore, trackBattle, trackGacha, trackLevelUp, trackLineupEdit, t
 import { BOND_TEMPLATES, calculateBondLevel, CODEX_MILESTONES, createInitialCodexData } from '@/data/bonds';
 
 interface GameState {
-  player: {
-    id: string;
-    coins: number;
-    gems: number;
-    totalWins: number;
-    totalLosses: number;
-    highestWinStreak: number;
-    currentWinStreak: number;
-    totalBetAmount: number;
-    totalRewardAmount: number;
-  };
+  player: PlayerData;
   ownedAnimals: Animal[];
   ownedParts: Part[];
   ownedSkills: Skill[];
@@ -355,6 +346,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     currentWinStreak: 0,
     totalBetAmount: 0,
     totalRewardAmount: 0,
+    totalCoinsEarned: 0,
+    totalGemsEarned: 0,
   },
   ownedAnimals: [],
   ownedParts: [],
@@ -446,6 +439,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         currentWinStreak: 0,
         totalBetAmount: 0,
         totalRewardAmount: 0,
+        totalCoinsEarned: NEWBIE_GIFT.coins + 1000,
+        totalGemsEarned: 10,
       },
       ownedAnimals: initialAnimals,
       ownedParts: initialParts,
@@ -543,8 +538,19 @@ export const useGameStore = create<GameState>((set, get) => ({
       pityState.limited = { pullsSinceR4: 0, pullsSinceR5: 0, guaranteedFeatured: false };
     }
 
+    const estimatedTotalCoins = Math.max(
+      data.player.totalRewardAmount || 0,
+      data.player.coins || 0
+    );
+    const playerRaw = data.player as unknown as Record<string, unknown>;
+    const safePlayer = {
+      ...data.player,
+      totalCoinsEarned: (playerRaw.totalCoinsEarned as number) ?? estimatedTotalCoins,
+      totalGemsEarned: (playerRaw.totalGemsEarned as number) ?? (data.player.gems || 0),
+    };
+
     set({
-      player: data.player,
+      player: safePlayer,
       ownedAnimals: repairedAnimals,
       ownedParts: repairedParts,
       ownedSkills: data.ownedSkills,
@@ -632,6 +638,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         currentWinStreak: 0,
         totalBetAmount: 0,
         totalRewardAmount: 0,
+        totalCoinsEarned: 0,
+        totalGemsEarned: 0,
       },
       ownedAnimals: [],
       ownedParts: [],
@@ -1072,9 +1080,16 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   addCoins: (amount: number) => {
     set(state => ({
-      player: { ...state.player, coins: state.player.coins + amount },
+      player: {
+        ...state.player,
+        coins: state.player.coins + amount,
+        totalCoinsEarned: (state.player.totalCoinsEarned || 0) + Math.max(0, amount),
+      },
     }));
     get().saveGame();
+    if (amount > 0) {
+      useTaskStore.getState().refreshDerivedTasks();
+    }
   },
 
   spendCoins: (amount: number): boolean => {
@@ -1090,9 +1105,16 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   addGems: (amount: number) => {
     set(state => ({
-      player: { ...state.player, gems: state.player.gems + amount },
+      player: {
+        ...state.player,
+        gems: state.player.gems + amount,
+        totalGemsEarned: (state.player.totalGemsEarned || 0) + Math.max(0, amount),
+      },
     }));
     get().saveGame();
+    if (amount > 0) {
+      useTaskStore.getState().refreshDerivedTasks();
+    }
   },
 
   spendGems: (amount: number): boolean => {

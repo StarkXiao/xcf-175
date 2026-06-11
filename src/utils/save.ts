@@ -61,6 +61,8 @@ export const createNewSaveData = (): SaveData => {
       currentWinStreak: 0,
       totalBetAmount: 0,
       totalRewardAmount: 0,
+      totalCoinsEarned: 1500,
+      totalGemsEarned: 0,
     },
     ownedAnimals: [],
     ownedParts: [],
@@ -314,6 +316,24 @@ export const migrateSaveData = (data: SaveData): SaveData => {
       ownedAnimals: migratedAnimals,
       ownedMaterials: (migrated as Record<string, unknown>).ownedMaterials || [],
       codex: (migrated as Record<string, unknown>).codex || [],
+    } as SaveData;
+  }
+
+  if (migrated.version < 6) {
+    const playerData = migrated.player as unknown as Record<string, unknown>;
+    const estimatedTotalCoins = Math.max(
+      (playerData.totalRewardAmount as number) || 0,
+      (playerData.coins as number) || 0
+    );
+
+    migrated = {
+      ...migrated,
+      version: 6,
+      player: {
+        ...migrated.player,
+        totalCoinsEarned: (playerData.totalCoinsEarned as number) ?? estimatedTotalCoins,
+        totalGemsEarned: (playerData.totalGemsEarned as number) ?? (playerData.gems as number) ?? 0,
+      },
     } as SaveData;
   }
 

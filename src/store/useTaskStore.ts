@@ -362,8 +362,8 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     );
     const lineupAllRarity3 = lineupAnimals.every(a => a && a.rarity >= 3) ? lineupSize : 0;
 
-    const totalCoins = gameState.player.totalRewardAmount + 1000;
-    const totalGems = 10 + Math.floor(totalBattles / 10) * 5;
+    const totalCoins = gameState.player.totalCoinsEarned ?? gameState.player.totalRewardAmount;
+    const totalGems = gameState.player.totalGemsEarned ?? 0;
 
     const activeBonds = gameState.codexData?.bonds?.filter(b => b.isActivated).length || 0;
 

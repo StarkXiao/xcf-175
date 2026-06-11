@@ -494,6 +494,8 @@ export interface PlayerData {
   currentWinStreak: number;
   totalBetAmount: number;
   totalRewardAmount: number;
+  totalCoinsEarned: number;
+  totalGemsEarned: number;
 }
 
 export interface CodexEntry {
