@@ -1277,6 +1277,112 @@ export interface TaskTemplate {
   prerequisiteTaskIds?: string[];
 }
 
+export type WorldEventRarity = 'common' | 'rare' | 'epic' | 'legendary';
+
+export type WorldEventStatus = 'upcoming' | 'active' | 'ended';
+
+export type WorldEventBattleRule = 'doubleDamage' | 'halfHeal' | 'noBuff' | 'speedBoost' | 'critFrenzy' | 'elementSurge' | 'bossRush';
+
+export interface WorldEventBattleRuleConfig {
+  rule: WorldEventBattleRule;
+  name: string;
+  description: string;
+  emoji: string;
+  color: string;
+  atkMultiplier?: number;
+  defMultiplier?: number;
+  hpMultiplier?: number;
+  spdMultiplier?: number;
+  critBonus?: number;
+  healMultiplier?: number;
+  buffDisabled?: boolean;
+  elementBonus?: Element;
+  elementBonusMultiplier?: number;
+}
+
+export interface WorldEventSpecialEnemy {
+  id: string;
+  name: string;
+  emoji: string;
+  description: string;
+  element: Element;
+  baseHp: number;
+  baseAtk: number;
+  baseDef: number;
+  baseSpd: number;
+  rarity: WorldEventRarity;
+  skills: string[];
+  rewardCoins: number;
+  rewardGems: number;
+  rewardMaterials: { templateId: string; count: number }[];
+  rewardMultiplier: number;
+}
+
+export interface WorldEventShopItem {
+  id: string;
+  name: string;
+  emoji: string;
+  itemType: 'animal' | 'part' | 'skill' | 'material';
+  rarity: Rarity;
+  templateId: string;
+  cost: number;
+  currency: 'coins' | 'gems' | 'eventTokens';
+  stock: number;
+  description: string;
+}
+
+export interface WorldEventTemplate {
+  id: string;
+  name: string;
+  subtitle: string;
+  description: string;
+  emoji: string;
+  color: string;
+  rarity: WorldEventRarity;
+  durationHours: number;
+  cooldownHours: number;
+  specialEnemies: WorldEventSpecialEnemy[];
+  battleRules: WorldEventBattleRule[];
+  shopItems: WorldEventShopItem[];
+  bonusRewardMultiplier: number;
+  announcement: string;
+}
+
+export interface WorldEventInstance {
+  templateId: string;
+  startTime: number;
+  endTime: number;
+  status: WorldEventStatus;
+  enemiesDefeated: Record<string, number>;
+  shopPurchased: Record<string, number>;
+  totalEventTokensEarned: number;
+  battlesFought: number;
+  battlesWon: number;
+  claimedRewards: string[];
+}
+
+export interface WorldEventAnnouncement {
+  id: string;
+  eventId: string;
+  eventName: string;
+  eventEmoji: string;
+  eventColor: string;
+  message: string;
+  timestamp: number;
+  isRead: boolean;
+  type: 'eventStart' | 'eventEnding' | 'eventEnd' | 'specialEnemy' | 'newShopItem';
+}
+
+export interface WorldEventSaveData {
+  activeEvents: WorldEventInstance[];
+  pastEvents: WorldEventInstance[];
+  announcements: WorldEventAnnouncement[];
+  eventTokens: number;
+  totalEventsParticipated: number;
+  lastCycleCheck: number;
+  nextCycleTime: number;
+}
+
 export interface TaskSaveData {
   progress: Record<string, TaskProgress>;
   lastDailyReset: number;
@@ -1287,5 +1393,6 @@ declare module './index' {
   interface SaveData {
     arenaData?: ArenaSaveData;
     taskData?: TaskSaveData;
+    worldEventData?: WorldEventSaveData;
   }
 }

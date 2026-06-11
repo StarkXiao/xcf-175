@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
-import { ArrowLeft, Sparkles, Coins, Package, BookOpen, Diamond, History, Info, X, ChevronDown, Star, Flame, Clock, SkipForward } from 'lucide-react';
+import { ArrowLeft, Sparkles, Coins, Package, BookOpen, Diamond, History, Info, X, ChevronDown, Star, Flame, Clock, SkipForward, Zap } from 'lucide-react';
 import { NeonButton } from '@/components/NeonButton';
 import { NeonCard } from '@/components/NeonCard';
 import { AnimalCard } from '@/components/AnimalCard';
@@ -8,6 +8,7 @@ import { PartSlot } from '@/components/PartSlot';
 import { SkillIcon } from '@/components/SkillIcon';
 import { Empty } from '@/components/Empty';
 import { useGameStore } from '@/store/useGameStore';
+import { useWorldEventStore } from '@/store/useWorldEventStore';
 import { GACHA_RATES, GACHA_COST, PITY_CONFIG } from '@/engine/constants';
 import { getAnimalTemplate } from '@/data/animals';
 import { getPartTemplate, QUALITY_NAMES, QUALITY_COLORS, getPartSet } from '@/data/parts';
@@ -30,6 +31,11 @@ export default function Shop() {
     gachaRecords,
     limitedPool,
   } = useGameStore();
+
+  const eventShopItems = useWorldEventStore(state => state.getEventShopItems());
+  const eventTokens = useWorldEventStore(state => state.eventTokens);
+  const purchaseEventShopItem = useWorldEventStore(state => state.purchaseEventShopItem);
+  const [eventPurchaseResult, setEventPurchaseResult] = useState<{ success: boolean; message: string } | null>(null);
 
   const [activeTab, setActiveTab] = useState<GachaType>('animal');
   const [showResult, setShowResult] = useState(false);
@@ -626,6 +632,67 @@ export default function Shop() {
           </NeonButton>
         </div>
         {renderInventory()}
+
+        {eventShopItems.length > 0 && (
+          <div className="mt-8">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-cyber font-bold text-lg flex items-center gap-2">
+                <Zap className="w-5 h-5 text-cyber-yellow" />
+                <span className="text-cyber-yellow">事件限时商品</span>
+              </h2>
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-cyber-yellow/10 border border-cyber-yellow/30 rounded-lg">
+                <Coins className="w-4 h-4 text-cyber-yellow" />
+                <span className="font-cyber font-bold text-cyber-yellow text-sm">{eventTokens}</span>
+                <span className="text-xs text-cyber-yellow/70">代币</span>
+              </div>
+            </div>
+
+            {eventPurchaseResult && (
+              <div className={`mb-4 p-3 rounded-lg border ${
+                eventPurchaseResult.success
+                  ? 'bg-green-900/20 border-green-500/30 text-green-400'
+                  : 'bg-red-900/20 border-red-500/30 text-red-400'
+              }`}>
+                {eventPurchaseResult.message}
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {eventShopItems.map(({ item, purchased }) => {
+                const remaining = item.stock - purchased;
+                const rarityColor = getRarityColor(item.rarity);
+                return (
+                  <NeonCard key={item.id} className="p-3" style={{ borderColor: `${rarityColor}40` }}>
+                    <div className="text-center mb-2">
+                      <span className="text-2xl">{item.emoji}</span>
+                    </div>
+                    <div className="text-center mb-1">
+                      <span className="text-sm font-bold text-white">{item.name}</span>
+                    </div>
+                    <div className="text-center text-[10px] text-gray-500 mb-2">{item.description}</div>
+                    <div className="text-center text-xs mb-2">
+                      <span className={remaining > 0 ? 'text-cyber-cyan' : 'text-red-400'}>
+                        {remaining}/{item.stock}
+                      </span>
+                    </div>
+                    <NeonButton
+                      size="sm"
+                      className="w-full"
+                      onClick={() => {
+                        const result = purchaseEventShopItem(item.id);
+                        setEventPurchaseResult(result);
+                        setTimeout(() => setEventPurchaseResult(null), 3000);
+                      }}
+                      disabled={remaining <= 0}
+                    >
+                      {item.currency === 'eventTokens' ? `${item.cost} 代币` : item.currency === 'coins' ? `${item.cost} 💰` : `${item.cost} 💎`}
+                    </NeonButton>
+                  </NeonCard>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       {isAnimating && (

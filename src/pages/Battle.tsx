@@ -13,6 +13,7 @@ import type { BattleLogEntry, MatchmakingResult } from '@/types';
 import { getRarityColor } from '@/utils/format';
 import { computePlayerStrengthScore, computeLineupSignature, calculateDynamicDifficulty, DYNAMIC_TIER_NAMES, DYNAMIC_TIER_EMOJIS, DYNAMIC_TIER_COLORS } from '@/data/opponents';
 import { formatRankDisplay, getRankColor, getRankEmoji } from '@/data/seasons';
+import { useWorldEventStore } from '@/store/useWorldEventStore';
 
 const MATCH_QUALITY_LABELS: Record<MatchmakingResult['matchQuality'], { text: string; color: string }> = {
   fair: { text: '势均力敌', color: '#ffcc00' },
@@ -28,6 +29,9 @@ export default function Battle() {
   const { battleHistory, lineup, getLineupAnimals, startBattle, player } = useGameStore();
   const rankChange = useSeasonStore(state => state.lastRankChange);
   const protectionState = useSeasonStore(state => state.protectionState);
+  const worldEventBonus = useWorldEventStore(state => state.getActiveBonusMultiplier());
+  const activeBattleRules = useWorldEventStore(state => state.getActiveBattleRules());
+  const recordBattleResult = useWorldEventStore(state => state.recordBattleResult);
 
   const lineupAnimals = getLineupAnimals();
   const {
@@ -140,9 +144,9 @@ export default function Battle() {
   const estimatedReward = useMemo(() => {
     if (!dynamicInfo || betAmount === 0) return 0;
     const baseMultiplier = 1.5;
-    const effectiveMultiplier = baseMultiplier * dynamicInfo.rewardMultiplier;
+    const effectiveMultiplier = baseMultiplier * dynamicInfo.rewardMultiplier * worldEventBonus;
     return Math.floor(betAmount * effectiveMultiplier);
-  }, [dynamicInfo, betAmount]);
+  }, [dynamicInfo, betAmount, worldEventBonus]);
 
   if (!battleRecord && !showBetModal) {
     return (
@@ -433,6 +437,20 @@ export default function Battle() {
                         ×{dynamicInfo.difficultyMultiplier.toFixed(2)}
                       </span>
                     </div>
+
+                    {worldEventBonus > 1.0 && (
+                      <div className="mb-2 flex items-center gap-2 px-3 py-2 bg-cyber-yellow/10 border border-cyber-yellow/30 rounded-lg">
+                        <span className="text-sm">⚡</span>
+                        <span className="text-xs font-cyber font-bold text-cyber-yellow">
+                          世界事件加成 ×{worldEventBonus.toFixed(1)}
+                        </span>
+                        {activeBattleRules.map(rule => (
+                          <span key={rule.rule} className="text-xs px-1.5 py-0.5 rounded" style={{ color: rule.color, backgroundColor: `${rule.color}15` }}>
+                            {rule.emoji}{rule.name}
+                          </span>
+                        ))}
+                      </div>
+                    )}
 
                     <div className="flex items-center gap-4 text-xs text-gray-400">
                       {player.currentWinStreak > 0 && (

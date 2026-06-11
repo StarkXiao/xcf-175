@@ -1,13 +1,15 @@
 import { NavLink } from 'react-router-dom';
-import { Swords, Users, Zap, ShoppingBag, Home, Coins, Star, BookOpen, Trophy, Castle, Map, Gavel, FlaskConical, Target, Award } from 'lucide-react';
+import { Swords, Users, Zap, ShoppingBag, Home, Coins, Star, BookOpen, Trophy, Castle, Map, Gavel, FlaskConical, Target, Award, Globe } from 'lucide-react';
 import { useGameStore } from '@/store/useGameStore';
 import { useTaskStore } from '@/store/useTaskStore';
+import { useWorldEventStore } from '@/store/useWorldEventStore';
 import { formatNumber } from '@/utils/format';
 
 export const NavBar = () => {
   const coins = useGameStore(state => state.player.coins);
   const unclaimedCount = useTaskStore(state => state.getUnclaimedCount());
   const isTasksInitialized = useTaskStore(state => state.isInitialized);
+  const activeEventCount = useWorldEventStore(state => state.activeEvents.filter(e => e.status === 'active').length);
 
   const navItems = [
     { to: '/', icon: Home, label: '大厅' },
@@ -22,6 +24,7 @@ export const NavBar = () => {
     { to: '/guild', icon: Castle, label: '公会' },
     { to: '/codex', icon: BookOpen, label: '图鉴' },
     { to: '/tasks', icon: Award, label: '任务', badge: isTasksInitialized && unclaimedCount > 0 ? unclaimedCount : undefined },
+    { to: '/world-event', icon: Globe, label: '事件', badge: activeEventCount > 0 ? activeEventCount : undefined },
     { to: '/battle', icon: Swords, label: '战斗' },
     { to: '/shop', icon: ShoppingBag, label: '商店' },
   ];

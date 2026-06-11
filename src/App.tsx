@@ -15,6 +15,7 @@ import Auction from '@/pages/Auction';
 import Lab from '@/pages/Lab';
 import Arena from '@/pages/Arena';
 import Tasks from '@/pages/Tasks';
+import WorldEvent from '@/pages/WorldEvent';
 import { useGameStore } from '@/store/useGameStore';
 import { useSeasonStore } from '@/store/useSeasonStore';
 import { useGuildStore } from '@/store/useGuildStore';
@@ -22,6 +23,7 @@ import { useStoryStore } from '@/store/useStoryStore';
 import { useAuctionStore } from '@/store/useAuctionStore';
 import { useArenaStore } from '@/store/useArenaStore';
 import { useTaskStore } from '@/store/useTaskStore';
+import { useWorldEventStore } from '@/store/useWorldEventStore';
 import { useEffect } from 'react';
 
 function App() {
@@ -32,6 +34,7 @@ function App() {
   const initAuction = useAuctionStore(state => state.initialize);
   const initArena = useArenaStore(state => state.initArena);
   const initTasks = useTaskStore(state => state.initTasks);
+  const initWorldEvent = useWorldEventStore(state => state.initWorldEvent);
 
   useEffect(() => {
     initialize();
@@ -41,7 +44,8 @@ function App() {
     initAuction();
     initArena();
     initTasks();
-  }, [initialize, initSeason, initGuild, initStory, initAuction, initArena, initTasks]);
+    initWorldEvent();
+  }, [initialize, initSeason, initGuild, initStory, initAuction, initArena, initTasks, initWorldEvent]);
 
   if (!isInitialized) {
     return (
@@ -88,6 +92,7 @@ function App() {
             <Route path="/lab" element={<Lab />} />
             <Route path="/arena" element={<Arena />} />
             <Route path="/tasks" element={<Tasks />} />
+            <Route path="/world-event" element={<WorldEvent />} />
           </Routes>
           <NavBar />
         </div>

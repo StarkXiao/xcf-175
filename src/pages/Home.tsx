@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router';
-import { Swords, Users, BookOpen, ShoppingBag, Trophy, Sparkles, Star, TrendingUp, TrendingDown, Zap, Clock, ChevronRight, Crown, Map, Link2, Gift } from 'lucide-react';
+import { Swords, Users, BookOpen, ShoppingBag, Trophy, Sparkles, Star, TrendingUp, TrendingDown, Zap, Clock, ChevronRight, Crown, Map, Link2, Gift, Megaphone } from 'lucide-react';
 import { NeonButton } from '@/components/NeonButton';
 import { NeonCard } from '@/components/NeonCard';
 import { MiniChart } from '@/components/MiniChart';
@@ -14,11 +14,14 @@ import { getRarityColor } from '@/utils/format';
 import { formatTime } from '@/utils/format';
 import { useSeasonStore } from '@/store/useSeasonStore';
 import { formatRankDisplay, getRankEmoji, getRankColor } from '@/data/seasons';
+import { useWorldEventStore } from '@/store/useWorldEventStore';
 
 export default function Home() {
   const navigate = useNavigate();
   const { lineup, ownedAnimals, startBattle, battleHistory, codex, player, gachaRecords, codexData, claimMilestoneReward, refreshBonds, refreshCodexMilestones } = useGameStore();
   const { currentRank, currentSeason } = useSeasonStore();
+  const activeEventList = useWorldEventStore(state => state.getActiveEventTemplates());
+  const unreadAnnouncements = useWorldEventStore(state => state.getUnreadAnnouncements());
   const canBattle = lineup.length > 0 && lineup.length <= BATTLE_CONSTANTS.MAX_TEAM_SIZE;
   const lastBattle = battleHistory[0];
 
@@ -223,6 +226,46 @@ export default function Home() {
       </div>
 
       <div className="max-w-6xl mx-auto px-4">
+        {(activeEventList.length > 0 || unreadAnnouncements.length > 0) && (
+          <div className="mb-6 space-y-3">
+            {activeEventList.map(({ instance, template }) => (
+              <NeonCard
+                key={instance.templateId}
+                className="p-3 cursor-pointer hover:scale-[1.01] transition-transform"
+                style={{ borderColor: template.color }}
+                onClick={() => navigate('/world-event')}
+              >
+                <div className="flex items-center gap-3">
+                  <div
+                    className="w-10 h-10 rounded-lg flex items-center justify-center text-2xl shrink-0"
+                    style={{ backgroundColor: `${template.color}20` }}
+                  >
+                    {template.emoji}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-sm" style={{ color: template.color }}>{template.name}</span>
+                      <span className="text-xs text-white/40">{template.subtitle}</span>
+                      <span className="text-xs text-cyber-yellow font-bold">×{template.bonusRewardMultiplier} 奖励</span>
+                    </div>
+                    <p className="text-xs text-white/50 truncate">{template.announcement}</p>
+                  </div>
+                  <Megaphone className="w-5 h-5 shrink-0 animate-pulse" style={{ color: template.color }} />
+                </div>
+              </NeonCard>
+            ))}
+            {unreadAnnouncements.length > 0 && activeEventList.length === 0 && (
+              <NeonCard className="p-3 cursor-pointer hover:scale-[1.01] transition-transform border-cyber-yellow/50" onClick={() => navigate('/world-event')}>
+                <div className="flex items-center gap-3">
+                  <Megaphone className="w-5 h-5 text-cyber-yellow animate-pulse" />
+                  <span className="text-sm text-cyber-yellow font-bold">{unreadAnnouncements.length} 条未读事件公告</span>
+                  <ChevronRight className="w-4 h-4 text-cyber-yellow ml-auto" />
+                </div>
+              </NeonCard>
+            )}
+          </div>
+        )}
+
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           {stats.map((stat, i) => (
             <NeonCard key={i} variant={stat.color as any} className="text-center">
@@ -569,6 +612,13 @@ export default function Home() {
               desc: '探索霓虹都市，挑战关卡，解锁丰厚首通奖励',
               action: () => navigate('/story'),
               color: 'cyan' as const,
+            },
+            {
+              icon: Zap,
+              title: activeEventList.length > 0 ? `世界事件 · ${activeEventList[0].template.name}` : '世界事件',
+              desc: activeEventList.length > 0 ? `${activeEventList[0].template.subtitle} · ×${activeEventList[0].template.bonusRewardMultiplier}奖励` : '周期刷新特殊敌人与限时规则',
+              action: () => navigate('/world-event'),
+              color: 'yellow' as const,
             },
             {
               icon: Users,
