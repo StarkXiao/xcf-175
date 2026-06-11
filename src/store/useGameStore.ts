@@ -69,6 +69,7 @@ import {
 import { computePlayerStrengthScore, computeLineupSignature, calculateDynamicDifficulty } from '@/data/opponents';
 import { useSeasonStore } from '@/store/useSeasonStore';
 import { useArenaStore } from '@/store/useArenaStore';
+import { trackBattle, trackGacha, trackLevelUp, trackLineupEdit } from '@/store/useTaskStore';
 import { BOND_TEMPLATES, calculateBondLevel, CODEX_MILESTONES, createInitialCodexData } from '@/data/bonds';
 
 interface GameState {
@@ -718,6 +719,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       ),
     }));
     get().saveGame();
+    trackLevelUp();
     return true;
   },
 
@@ -743,6 +745,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       },
     }));
     get().saveGame();
+    trackLineupEdit();
     return true;
   },
 
@@ -755,6 +758,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       },
     }));
     get().saveGame();
+    trackLineupEdit();
   },
 
   setFormationPosition: (animalId: string, position: FormationPosition) => {
@@ -1127,6 +1131,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       gachaRecords: [...state.gachaRecords, gachaRecord],
     }));
     get().addAnimal(animal);
+    trackGacha(actualRarity);
     return { animal, isNew, isPity };
   },
 
@@ -1157,6 +1162,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       gachaRecords: [...state.gachaRecords, gachaRecord],
     }));
     get().saveGame();
+    trackGacha(actualRarity);
     return { part, isNew, isPity };
   },
 
@@ -1187,6 +1193,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       gachaRecords: [...state.gachaRecords, gachaRecord],
     }));
     get().saveGame();
+    trackGacha(actualRarity);
     return { skill, isNew, isPity };
   },
 
@@ -1346,6 +1353,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     } else {
       get().saveGame();
     }
+    trackGacha(actualRarity);
     return { item, itemType, isNew, isPity, isFeatured };
   },
 
@@ -1706,6 +1714,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     const rankChange = seasonStore.lastRankChange;
 
     get().saveGame(true);
+
+    trackBattle(result.isWin);
 
     return {
       success: true,

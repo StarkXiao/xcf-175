@@ -14,12 +14,14 @@ import Story from '@/pages/Story';
 import Auction from '@/pages/Auction';
 import Lab from '@/pages/Lab';
 import Arena from '@/pages/Arena';
+import Tasks from '@/pages/Tasks';
 import { useGameStore } from '@/store/useGameStore';
 import { useSeasonStore } from '@/store/useSeasonStore';
 import { useGuildStore } from '@/store/useGuildStore';
 import { useStoryStore } from '@/store/useStoryStore';
 import { useAuctionStore } from '@/store/useAuctionStore';
 import { useArenaStore } from '@/store/useArenaStore';
+import { useTaskStore } from '@/store/useTaskStore';
 import { useEffect } from 'react';
 
 function App() {
@@ -29,6 +31,7 @@ function App() {
   const initStory = useStoryStore(state => state.initStory);
   const initAuction = useAuctionStore(state => state.initialize);
   const initArena = useArenaStore(state => state.initArena);
+  const initTasks = useTaskStore(state => state.initTasks);
 
   useEffect(() => {
     initialize();
@@ -37,7 +40,8 @@ function App() {
     initStory();
     initAuction();
     initArena();
-  }, [initialize, initSeason, initGuild, initStory, initAuction, initArena]);
+    initTasks();
+  }, [initialize, initSeason, initGuild, initStory, initAuction, initArena, initTasks]);
 
   if (!isInitialized) {
     return (
@@ -83,6 +87,7 @@ function App() {
             <Route path="/story" element={<Story />} />
             <Route path="/lab" element={<Lab />} />
             <Route path="/arena" element={<Arena />} />
+            <Route path="/tasks" element={<Tasks />} />
           </Routes>
           <NavBar />
         </div>

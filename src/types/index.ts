@@ -1243,8 +1243,47 @@ export interface ArenaMatchmakingResult {
   refreshCooldown: number;
 }
 
+export type TaskCategory = 'battle' | 'gacha' | 'ascend' | 'lineup' | 'daily' | 'achievement';
+
+export type TaskRewardType = 'coins' | 'gems' | 'material' | 'animal' | 'part' | 'skill';
+
+export interface TaskReward {
+  type: TaskRewardType;
+  amount: number;
+  templateId?: string;
+}
+
+export interface TaskProgress {
+  taskId: string;
+  currentValue: number;
+  targetValue: number;
+  isCompleted: boolean;
+  isClaimed: boolean;
+  completedAt?: number;
+}
+
+export interface TaskTemplate {
+  id: string;
+  name: string;
+  description: string;
+  emoji: string;
+  category: TaskCategory;
+  targetValue: number;
+  rewards: TaskReward[];
+  isDaily?: boolean;
+  isAchievement?: boolean;
+  prerequisiteTaskIds?: string[];
+}
+
+export interface TaskSaveData {
+  progress: Record<string, TaskProgress>;
+  lastDailyReset: number;
+  completedAchievements: string[];
+}
+
 declare module './index' {
   interface SaveData {
     arenaData?: ArenaSaveData;
+    taskData?: TaskSaveData;
   }
 }

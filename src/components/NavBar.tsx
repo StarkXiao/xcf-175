@@ -1,10 +1,13 @@
 import { NavLink } from 'react-router-dom';
-import { Swords, Users, Zap, ShoppingBag, Home, Coins, Star, BookOpen, Trophy, Castle, Map, Gavel, FlaskConical, Target } from 'lucide-react';
+import { Swords, Users, Zap, ShoppingBag, Home, Coins, Star, BookOpen, Trophy, Castle, Map, Gavel, FlaskConical, Target, Award } from 'lucide-react';
 import { useGameStore } from '@/store/useGameStore';
+import { useTaskStore } from '@/store/useTaskStore';
 import { formatNumber } from '@/utils/format';
 
 export const NavBar = () => {
   const coins = useGameStore(state => state.player.coins);
+  const unclaimedCount = useTaskStore(state => state.getUnclaimedCount());
+  const isTasksInitialized = useTaskStore(state => state.isInitialized);
 
   const navItems = [
     { to: '/', icon: Home, label: '大厅' },
@@ -18,6 +21,7 @@ export const NavBar = () => {
     { to: '/arena', icon: Target, label: '竞技场' },
     { to: '/guild', icon: Castle, label: '公会' },
     { to: '/codex', icon: BookOpen, label: '图鉴' },
+    { to: '/tasks', icon: Award, label: '任务', badge: isTasksInitialized && unclaimedCount > 0 ? unclaimedCount : undefined },
     { to: '/battle', icon: Swords, label: '战斗' },
     { to: '/shop', icon: ShoppingBag, label: '商店' },
   ];
@@ -47,7 +51,7 @@ export const NavBar = () => {
                   key={item.to}
                   to={item.to}
                   className={({ isActive }) =>
-                    `flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-300 ${
+                    `flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-300 relative ${
                       isActive
                         ? 'bg-cyber-cyan/20 text-cyber-cyan neon-border-cyan'
                         : 'text-gray-400 hover:text-cyber-cyan hover:bg-cyber-cyan/10'
@@ -56,6 +60,11 @@ export const NavBar = () => {
                 >
                   <item.icon className="w-4 h-4" />
                   <span className="hidden lg:inline">{item.label}</span>
+                  {item.badge !== undefined && (
+                    <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-xs flex items-center justify-center text-white font-bold">
+                      {item.badge > 99 ? '99+' : item.badge}
+                    </span>
+                  )}
                 </NavLink>
               ))}
             </div>
@@ -68,7 +77,7 @@ export const NavBar = () => {
               key={item.to}
               to={item.to}
               className={({ isActive }) =>
-                `flex flex-col items-center gap-1 px-3 py-2 rounded-lg transition-all ${
+                `flex flex-col items-center gap-1 px-3 py-2 rounded-lg transition-all relative ${
                   isActive
                     ? 'text-cyber-cyan'
                     : 'text-gray-500'
@@ -77,6 +86,11 @@ export const NavBar = () => {
             >
               <item.icon className="w-5 h-5" />
               <span className="text-xs">{item.label}</span>
+              {item.badge !== undefined && (
+                <span className="absolute top-0 right-1 w-4 h-4 bg-red-500 rounded-full text-[10px] flex items-center justify-center text-white font-bold">
+                  {item.badge > 9 ? '9+' : item.badge}
+                </span>
+              )}
             </NavLink>
           ))}
         </div>
