@@ -1435,6 +1435,8 @@ export interface ExchangeItem {
   emoji: string;
   rarity: Rarity;
   itemType: 'part' | 'skill' | 'material' | 'gems';
+  templateId?: string;
+  amount?: number;
   cost: { type: 'coins' | 'gems' | 'material'; amount: number; materialTemplateId?: string };
   description: string;
   stock?: number;

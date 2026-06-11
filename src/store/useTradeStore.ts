@@ -70,6 +70,8 @@ export const EXCHANGE_ITEMS: ExchangeItem[] = [
     emoji: '✨',
     rarity: 2,
     itemType: 'material',
+    templateId: 'lab_synthesis_dust',
+    amount: 10,
     cost: { type: 'coins', amount: 200 },
     description: '获得10个合成粉尘材料',
     dailyLimit: 10,
@@ -80,6 +82,8 @@ export const EXCHANGE_ITEMS: ExchangeItem[] = [
     emoji: '💠',
     rarity: 3,
     itemType: 'material',
+    templateId: 'lab_synthesis_crystal',
+    amount: 5,
     cost: { type: 'coins', amount: 500 },
     description: '获得5个合成水晶材料',
     dailyLimit: 5,
@@ -394,7 +398,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
             setId: template.setId,
           };
           items.push(newPart);
-          useGameStore.getState().addPart(newPart);
+          gameState.addPart(newPart);
         }
       } else if (item.itemType === 'skill') {
         const templates = require('@/data/skills').SKILL_TEMPLATES.filter(
@@ -408,16 +412,16 @@ export const useTradeStore = create<TradeState>((set, get) => ({
             templateId: template.id,
           };
           items.push(newSkill);
-          useGameStore.getState().addSkill(newSkill);
+          gameState.addSkill(newSkill);
         }
       } else if (item.itemType === 'material') {
-        const matTemplate = getMaterialTemplate(item.id.replace('exchange_material_', ''));
-        if (matTemplate) {
-          const amount = item.id.includes('dust') ? 10 : item.id.includes('crystal') ? 5 : 1;
-          useGameStore.getState().addMaterials([{ templateId: matTemplate.id, count: amount }]);
+        const templateId = item.templateId;
+        const amount = item.amount || 1;
+        if (templateId) {
+          gameState.addMaterials([{ templateId, count: amount }]);
         }
       } else if (item.itemType === 'gems') {
-        useGameStore.getState().addGems(10);
+        gameState.addGems(10);
       }
     }
 
@@ -446,27 +450,6 @@ export const useTradeStore = create<TradeState>((set, get) => ({
         selectedExchangeItem: null,
       };
     });
-
-    const data = loadFromLocalStorage();
-    if (data?.inventoryData) {
-      const newInventoryItems = [...data.inventoryData.items];
-      items.forEach(newItem => {
-        const itemType = 'slot' in newItem ? 'part' : 'damage' in newItem ? 'skill' : 'material';
-        newInventoryItems.push({
-          id: generateId('inv'),
-          itemType: itemType as any,
-          itemId: newItem.id,
-          isLocked: false,
-          isFavorite: false,
-          acquiredAt: Date.now(),
-        });
-      });
-      const newData = {
-        ...data,
-        inventoryData: { ...data.inventoryData, items: newInventoryItems },
-      };
-      throttledSave(newData);
-    }
 
     get().saveTrade();
     gameState.saveGame();
