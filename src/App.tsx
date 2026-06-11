@@ -13,11 +13,13 @@ import GuildExpedition from '@/pages/GuildExpedition';
 import Story from '@/pages/Story';
 import Auction from '@/pages/Auction';
 import Lab from '@/pages/Lab';
+import Arena from '@/pages/Arena';
 import { useGameStore } from '@/store/useGameStore';
 import { useSeasonStore } from '@/store/useSeasonStore';
 import { useGuildStore } from '@/store/useGuildStore';
 import { useStoryStore } from '@/store/useStoryStore';
 import { useAuctionStore } from '@/store/useAuctionStore';
+import { useArenaStore } from '@/store/useArenaStore';
 import { useEffect } from 'react';
 
 function App() {
@@ -26,6 +28,7 @@ function App() {
   const initGuild = useGuildStore(state => state.initGuild);
   const initStory = useStoryStore(state => state.initStory);
   const initAuction = useAuctionStore(state => state.initialize);
+  const initArena = useArenaStore(state => state.initArena);
 
   useEffect(() => {
     initialize();
@@ -33,7 +36,8 @@ function App() {
     initGuild();
     initStory();
     initAuction();
-  }, [initialize, initSeason, initGuild, initStory, initAuction]);
+    initArena();
+  }, [initialize, initSeason, initGuild, initStory, initAuction, initArena]);
 
   if (!isInitialized) {
     return (
@@ -78,6 +82,7 @@ function App() {
             <Route path="/guild" element={<GuildExpedition />} />
             <Route path="/story" element={<Story />} />
             <Route path="/lab" element={<Lab />} />
+            <Route path="/arena" element={<Arena />} />
           </Routes>
           <NavBar />
         </div>

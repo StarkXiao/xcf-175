@@ -68,6 +68,7 @@ import {
 } from '@/data/lab';
 import { computePlayerStrengthScore, computeLineupSignature, calculateDynamicDifficulty } from '@/data/opponents';
 import { useSeasonStore } from '@/store/useSeasonStore';
+import { useArenaStore } from '@/store/useArenaStore';
 import { BOND_TEMPLATES, calculateBondLevel, CODEX_MILESTONES, createInitialCodexData } from '@/data/bonds';
 
 interface GameState {
@@ -617,6 +618,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   resetGame: () => {
     clearSave();
+    useArenaStore.getState().resetArena();
     set({
       player: {
         id: '',

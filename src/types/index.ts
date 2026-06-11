@@ -1133,3 +1133,118 @@ export interface CodexSaveData {
   totalCollected: number;
   totalBondsActivated: number;
 }
+
+export interface ArenaDefenseConfig {
+  animalIds: string[];
+  lineupConfig: LineupConfig;
+  updatedAt: number;
+}
+
+export interface ArenaChallengeRecord {
+  id: string;
+  timestamp: number;
+  challengerName: string;
+  challengerAvatar: string;
+  defenderName: string;
+  defenderAvatar: string;
+  isPlayerAttacker: boolean;
+  isWin: boolean;
+  arenaPointsChange: number;
+  battleRecordId: string;
+  battleLog: BattleLogEntry[];
+  playerUnits: BattleUnit[];
+  enemyUnits: BattleUnit[];
+  initialPlayerUnits: BattleUnit[];
+  initialEnemyUnits: BattleUnit[];
+}
+
+export interface ArenaRankInfo {
+  rank: number;
+  arenaPoints: number;
+  tier: ArenaTier;
+  wins: number;
+  losses: number;
+  winStreak: number;
+  highestRank: number;
+  highestPoints: number;
+  totalAttacks: number;
+  totalDefenses: number;
+  defenseWins: number;
+}
+
+export type ArenaTier = 'rookie' | 'amateur' | 'professional' | 'elite' | 'legendary' | 'champion';
+
+export interface ArenaTierConfig {
+  tier: ArenaTier;
+  name: string;
+  emoji: string;
+  color: string;
+  pointThreshold: number;
+  rewards: {
+    coins: number;
+    gems: number;
+    materials?: { templateId: string; count: number }[];
+  };
+}
+
+export interface ArenaOpponent {
+  id: string;
+  name: string;
+  avatar: string;
+  tier: ArenaTier;
+  arenaPoints: number;
+  animalIds: string[];
+  animalTemplateIds: string[];
+  lineupConfig: LineupConfig;
+  difficulty: 'easy' | 'normal' | 'hard';
+  pointReward: number;
+  pointRisk: number;
+  expectedPointsGain: number;
+}
+
+export interface ArenaDailyReward {
+  date: string;
+  claimed: boolean;
+  tier: ArenaTier;
+  rank: number;
+  coins: number;
+  gems: number;
+  materials?: { templateId: string; count: number }[];
+}
+
+export interface ArenaSaveData {
+  defenseConfig: ArenaDefenseConfig | null;
+  rankInfo: ArenaRankInfo;
+  challengeHistory: ArenaChallengeRecord[];
+  dailyRewards: ArenaDailyReward[];
+  lastDailyRewardDate: string;
+  lastAttackTime: number;
+  lastDefenseTime: number;
+  attackCountToday: number;
+  defenseCountToday: number;
+  maxDailyAttacks: number;
+  maxDailyDefenses: number;
+  opponents: ArenaOpponent[];
+  opponentsRefreshTime: number;
+}
+
+export interface ArenaAttackResult {
+  success: boolean;
+  isWin: boolean;
+  arenaPointsChange: number;
+  newRank: number;
+  newPoints: number;
+  battleRecord?: BattleRecord;
+  reward?: { coins: number; gems: number };
+}
+
+export interface ArenaMatchmakingResult {
+  opponents: ArenaOpponent[];
+  refreshCooldown: number;
+}
+
+declare module './index' {
+  interface SaveData {
+    arenaData?: ArenaSaveData;
+  }
+}

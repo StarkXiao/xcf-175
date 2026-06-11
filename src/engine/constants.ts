@@ -397,3 +397,45 @@ export const GUILD_LEVEL_COLORS: Record<number, string> = {
   4: '#a855f7',
   5: '#f59e0b',
 };
+
+export const ARENA_CONSTANTS = {
+  BASE_POINT_CHANGE: 20,
+  MIN_POINTS_GAIN: 10,
+  MIN_POINTS_LOSS: 5,
+  MAX_DAILY_ATTACKS: 10,
+  MAX_DAILY_DEFENSES: 10,
+  OPPONENT_REFRESH_COOLDOWN: 300,
+  ATTACK_COOLDOWN: 60,
+  WIN_STREAK_BONUS: 5,
+  MAX_WIN_STREAK_BONUS: 25,
+  DAILY_REWARD_RANK_MULTIPLIER: 1000,
+} as const;
+
+export const ARENA_TIER_ORDER = ['rookie', 'amateur', 'professional', 'elite', 'legendary', 'champion'] as const;
+
+export const ARENA_TIER_NAMES: Record<string, string> = {
+  rookie: '新秀',
+  amateur: '业余',
+  professional: '职业',
+  elite: '精英',
+  legendary: '传奇',
+  champion: '冠军',
+};
+
+export const ARENA_TIER_EMOJIS: Record<string, string> = {
+  rookie: '🌱',
+  amateur: '⚡',
+  professional: '🏆',
+  elite: '💎',
+  legendary: '👑',
+  champion: '🔱',
+};
+
+export const ARENA_TIER_COLORS: Record<string, string> = {
+  rookie: '#8bc34a',
+  amateur: '#03a9f4',
+  professional: '#ff9800',
+  elite: '#9c27b0',
+  legendary: '#f44336',
+  champion: '#e91e63',
+};
