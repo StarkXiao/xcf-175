@@ -1389,10 +1389,82 @@ export interface TaskSaveData {
   completedAchievements: string[];
 }
 
+export interface InventoryItem {
+  id: string;
+  itemType: 'part' | 'skill' | 'material';
+  itemId: string;
+  isLocked: boolean;
+  isFavorite: boolean;
+  acquiredAt: number;
+}
+
+export type InventorySortBy = 'rarity' | 'name' | 'acquiredAt' | 'quality';
+export type InventorySortOrder = 'asc' | 'desc';
+
+export interface InventoryFilter {
+  itemType: 'all' | 'part' | 'skill' | 'material';
+  rarity: Rarity | 0;
+  slot?: PartSlot | 'all';
+  skillType?: SkillType | 'all';
+  onlyFavorites: boolean;
+  onlyLocked: boolean;
+  sortBy: InventorySortBy;
+  sortOrder: InventorySortOrder;
+  search?: string;
+}
+
+export interface InventorySaveData {
+  items: InventoryItem[];
+  filters: InventoryFilter;
+  selectedItemId: string | null;
+  bulkMode: boolean;
+  selectedIds: string[];
+}
+
+export type RecycleRarity = 'common' | 'rare' | 'epic' | 'legendary' | 'myth';
+
+export interface RecycleConfig {
+  rarity: Rarity;
+  coinReward: number;
+  materialReward?: { templateId: string; count: number };
+}
+
+export interface ExchangeItem {
+  id: string;
+  name: string;
+  emoji: string;
+  rarity: Rarity;
+  itemType: 'part' | 'skill' | 'material' | 'gems';
+  cost: { type: 'coins' | 'gems' | 'material'; amount: number; materialTemplateId?: string };
+  description: string;
+  stock?: number;
+  dailyLimit?: number;
+}
+
+export interface TradeRecord {
+  id: string;
+  type: 'recycle' | 'exchange';
+  itemName: string;
+  itemEmoji: string;
+  rarity: Rarity;
+  cost: number;
+  reward: string;
+  timestamp: number;
+}
+
+export interface TradeSaveData {
+  recycleHistory: TradeRecord[];
+  exchangeHistory: TradeRecord[];
+  dailyExchanges: Record<string, number>;
+  lastDailyReset: number;
+}
+
 declare module './index' {
   interface SaveData {
     arenaData?: ArenaSaveData;
     taskData?: TaskSaveData;
     worldEventData?: WorldEventSaveData;
+    inventoryData?: InventorySaveData;
+    tradeData?: TradeSaveData;
   }
 }

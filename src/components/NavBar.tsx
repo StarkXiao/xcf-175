@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { Swords, Users, Zap, ShoppingBag, Home, Coins, Star, BookOpen, Trophy, Castle, Map, Gavel, FlaskConical, Target, Award, Globe } from 'lucide-react';
+import { Swords, Users, Zap, ShoppingBag, Home, Coins, Star, BookOpen, Trophy, Castle, Map, Gavel, FlaskConical, Target, Award, Globe, Package, ArrowLeftRight } from 'lucide-react';
 import { useGameStore } from '@/store/useGameStore';
 import { useTaskStore } from '@/store/useTaskStore';
 import { useWorldEventStore } from '@/store/useWorldEventStore';
@@ -18,6 +18,8 @@ export const NavBar = () => {
     { to: '/skills', icon: Zap, label: '技能' },
     { to: '/ascend', icon: Star, label: '升星' },
     { to: '/lab', icon: FlaskConical, label: '实验室' },
+    { to: '/inventory', icon: Package, label: '仓库' },
+    { to: '/trade', icon: ArrowLeftRight, label: '交易' },
     { to: '/auction', icon: Gavel, label: '黑市' },
     { to: '/season', icon: Trophy, label: '天梯' },
     { to: '/arena', icon: Target, label: '竞技场' },

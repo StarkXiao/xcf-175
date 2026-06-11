@@ -16,6 +16,8 @@ import Lab from '@/pages/Lab';
 import Arena from '@/pages/Arena';
 import Tasks from '@/pages/Tasks';
 import WorldEvent from '@/pages/WorldEvent';
+import Inventory from '@/pages/Inventory';
+import Trade from '@/pages/Trade';
 import { useGameStore } from '@/store/useGameStore';
 import { useSeasonStore } from '@/store/useSeasonStore';
 import { useGuildStore } from '@/store/useGuildStore';
@@ -93,6 +95,8 @@ function App() {
             <Route path="/arena" element={<Arena />} />
             <Route path="/tasks" element={<Tasks />} />
             <Route path="/world-event" element={<WorldEvent />} />
+            <Route path="/inventory" element={<Inventory />} />
+            <Route path="/trade" element={<Trade />} />
           </Routes>
           <NavBar />
         </div>
