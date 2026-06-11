@@ -26,7 +26,7 @@ import {
   getArenaTierConfig,
 } from '@/data/arena';
 import { ARENA_CONSTANTS } from '@/engine/constants';
-import { simulateFullBattle } from '@/engine/battleEngine';
+import { simulateFullBattle, simulateFullBattleWithCustomEnemies, type CustomEnemyBattleConfig } from '@/engine/battleEngine';
 import { generateId, generateBattleId } from '@/utils/id';
 import { useGameStore } from '@/store/useGameStore';
 
@@ -285,12 +285,16 @@ export const useArenaStore = create<ArenaState>((set, get) => ({
 
     const enemyAnimals = createOpponentAnimals(opponent);
 
-    const battleResult = simulateFullBattle(
+    const customEnemyConfig: CustomEnemyBattleConfig = {
+      enemyAnimals,
+      enemyLineupConfig: opponent.lineupConfig,
+    };
+
+    const battleResult = simulateFullBattleWithCustomEnemies(
       playerAnimals,
       0,
       gameState.lineupConfig,
-      undefined,
-      opponent.difficulty,
+      customEnemyConfig,
       new Set(gameState.ownedAnimals.map(a => a.templateId))
     );
 
@@ -422,12 +426,17 @@ export const useArenaStore = create<ArenaState>((set, get) => ({
     const attacker = opponents[Math.floor(Math.random() * opponents.length)];
     const attackerAnimals = createOpponentAnimals(attacker);
 
-    const battleResult = simulateFullBattle(
+    const customEnemyConfig: CustomEnemyBattleConfig = {
+      enemyAnimals: defenseAnimals,
+      enemyLineupConfig: state.defenseConfig.lineupConfig,
+    };
+
+    const battleResult = simulateFullBattleWithCustomEnemies(
       attackerAnimals,
       0,
       attacker.lineupConfig,
-      undefined,
-      attacker.difficulty
+      customEnemyConfig,
+      ownedTemplateIds
     );
 
     const isWin = !battleResult.isWin;
@@ -443,6 +452,25 @@ export const useArenaStore = create<ArenaState>((set, get) => ({
     const newTier = calculateArenaTierFromPoints(newPoints);
     const newRank = calculateArenaRankFromPoints(newPoints);
 
+    const battleRecordId = generateBattleId();
+
+    const battleRecord: BattleRecord = {
+      id: battleRecordId,
+      timestamp: Date.now(),
+      opponentName: attacker.name,
+      opponentAvatar: attacker.avatar,
+      isWin,
+      betAmount: 0,
+      reward: 0,
+      playerLineup: defenseAnimals.map(a => a.id),
+      enemyLineup: attackerAnimals.map(a => a.id),
+      battleLog: battleResult.battleLog,
+      playerUnits: battleResult.enemyUnits,
+      enemyUnits: battleResult.playerUnits,
+      initialPlayerUnits: battleResult.initialEnemyUnits,
+      initialEnemyUnits: battleResult.initialPlayerUnits,
+    };
+
     const challengeRecord: ArenaChallengeRecord = {
       id: generateId('challenge'),
       timestamp: Date.now(),
@@ -453,7 +481,7 @@ export const useArenaStore = create<ArenaState>((set, get) => ({
       isPlayerAttacker: false,
       isWin,
       arenaPointsChange: isWin ? Math.abs(pointsChange) : -Math.abs(pointsChange),
-      battleRecordId: generateBattleId(),
+      battleRecordId,
       battleLog: battleResult.battleLog,
       playerUnits: battleResult.enemyUnits,
       enemyUnits: battleResult.playerUnits,
@@ -474,6 +502,9 @@ export const useArenaStore = create<ArenaState>((set, get) => ({
       totalDefenses: state.rankInfo.totalDefenses + 1,
       defenseWins: state.rankInfo.defenseWins + (isWin ? 1 : 0),
     };
+
+    useGameStore.getState().battleHistory.push(battleRecord);
+    useGameStore.getState().saveGame();
 
     set(s => ({
       rankInfo: updatedRankInfo,

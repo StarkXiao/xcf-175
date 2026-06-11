@@ -148,7 +148,7 @@ export default function Arena() {
       initialEnemyUnits: record.initialEnemyUnits,
     };
     loadReplay(battleRecord);
-    navigate('/replay');
+    navigate(`/replay/${record.battleRecordId}`);
   }, [loadReplay, navigate]);
 
   const handleSaveDefense = useCallback(() => {

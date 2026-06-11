@@ -311,9 +311,11 @@ export default function Replay() {
       if (record) {
         loadReplay(record);
         setSelectedRecord(replayId);
+      } else if (battleRecord && battleRecord.id === replayId) {
+        setSelectedRecord(replayId);
       }
     }
-  }, [replayId, battleHistory, loadReplay]);
+  }, [replayId, battleHistory, loadReplay, battleRecord]);
 
   useEffect(() => {
     if (battleRecord && isPlaying && !isPaused) {
