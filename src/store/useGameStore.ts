@@ -49,7 +49,7 @@ import {
   hasExistingSave,
 } from '@/utils/save';
 import { GACHA_RATES, GACHA_COSTS, BATTLE_CONSTANTS, NEWBIE_GIFT, PITY_CONFIG, LIMITED_POOL } from '@/engine/constants';
-import { simulateFullBattle } from '@/engine/battleEngine';
+import { simulateFullBattle, simulateFullBattleWithCustomEnemies } from '@/engine/battleEngine';
 import { getAnimalTemplate } from '@/data/animals';
 import { getPartTemplate, rollPartQuality, QUALITY_REFINE_COST } from '@/data/parts';
 import { getMatchmakingDifficultyModifier } from '@/data/seasons';
@@ -140,6 +140,21 @@ interface GameState {
     effectiveDifficulty?: DynamicDifficultyTier;
     rewardMultiplier?: number;
     rankChange?: import('@/types').RankChangeResult;
+  };
+
+  startEventBattle: (
+    enemyAnimals: Animal[],
+    battleRules: import('@/types').WorldEventBattleRuleConfig[],
+    enemyName: string,
+    enemyEmoji: string,
+    rewardMultiplier: number,
+    betAmount?: number,
+  ) => {
+    success: boolean;
+    battleRecord?: BattleRecord;
+    isWin?: boolean;
+    reward?: number;
+    eventTokensEarned?: number;
   };
 
   getAnimalById: (id: string) => Animal | undefined;
@@ -1748,6 +1763,100 @@ export const useGameStore = create<GameState>((set, get) => ({
       effectiveDifficulty: result.effectiveDifficulty,
       rewardMultiplier: result.rewardMultiplier,
       rankChange,
+    };
+  },
+
+  startEventBattle: (
+    enemyAnimals: Animal[],
+    battleRules: import('@/types').WorldEventBattleRuleConfig[],
+    enemyName: string,
+    enemyEmoji: string,
+    rewardMultiplier: number,
+    betAmount: number = 0,
+  ) => {
+    const state = get();
+    const lineupAnimals = state.lineup
+      .map(id => state.ownedAnimals.find(a => a.id === id))
+      .filter(Boolean) as Animal[];
+
+    if (lineupAnimals.length === 0) return { success: false };
+
+    if (betAmount > 0 && state.player.coins < betAmount) return { success: false };
+
+    if (betAmount > 0) {
+      set(prev => ({
+        player: {
+          ...prev.player,
+          coins: prev.player.coins - betAmount,
+        },
+      }));
+    }
+
+    const customEnemyConfig: import('@/engine/battleEngine').CustomEnemyBattleConfig = {
+      enemyAnimals,
+      enemyLineupConfig: {
+        animals: enemyAnimals.map((a, i) => ({
+          animalId: a.id,
+          position: 'mid' as import('@/types').FormationPosition,
+          targetStrategy: 'lowestHp' as import('@/types').TargetStrategy,
+        })),
+        actionPriority: 'speedFirst' as import('@/types').ActionPriority,
+      },
+    };
+
+    const allOwnedTemplateIds = new Set(state.ownedAnimals.map(a => a.templateId));
+    const result = simulateFullBattleWithCustomEnemies(
+      lineupAnimals,
+      betAmount,
+      state.lineupConfig,
+      customEnemyConfig,
+      allOwnedTemplateIds,
+      battleRules,
+    );
+
+    const reward = result.isWin ? Math.floor((betAmount * 1.5 + 50) * rewardMultiplier) : 0;
+
+    const battleRecord: BattleRecord = {
+      id: generateBattleId(),
+      timestamp: Date.now(),
+      isWin: result.isWin,
+      betAmount,
+      reward,
+      opponentName: enemyName,
+      opponentAvatar: enemyEmoji,
+      playerLineup: state.lineup,
+      enemyLineup: result.enemyUnits.map(u => u.animalId),
+      battleLog: result.battleLog,
+      playerUnits: result.playerUnits,
+      enemyUnits: result.enemyUnits,
+      initialPlayerUnits: result.initialPlayerUnits,
+      initialEnemyUnits: result.initialEnemyUnits,
+    };
+
+    set(prev => ({
+      player: {
+        ...prev.player,
+        coins: prev.player.coins + reward,
+        totalWins: prev.player.totalWins + (result.isWin ? 1 : 0),
+        totalLosses: prev.player.totalLosses + (result.isWin ? 0 : 1),
+        currentWinStreak: result.isWin ? prev.player.currentWinStreak + 1 : 0,
+        highestWinStreak: result.isWin
+          ? Math.max(prev.player.highestWinStreak, prev.player.currentWinStreak + 1)
+          : prev.player.highestWinStreak,
+        totalRewardAmount: prev.player.totalRewardAmount + reward,
+      },
+      battleHistory: [battleRecord, ...prev.battleHistory].slice(0, 50),
+    }));
+
+    get().saveGame(true);
+    trackBattle(result.isWin);
+
+    return {
+      success: true,
+      battleRecord,
+      isWin: result.isWin,
+      reward,
+      eventTokensEarned: 0,
     };
   },
 

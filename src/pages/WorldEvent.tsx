@@ -15,6 +15,7 @@ import {
   getBattleRuleConfig,
   getWorldEventTemplate,
 } from '@/data/worldEvent';
+import { createEventEnemyAnimal } from '@/engine/battleEngine';
 import { getRarityColor } from '@/utils/format';
 import type {
   WorldEventInstance,
@@ -40,12 +41,12 @@ export default function WorldEvent() {
   const {
     activeEvents, announcements, eventTokens, nextCycleTime,
     isInitialized, initWorldEvent, checkCycleRefresh,
-    getActiveEventTemplates, getEventShopItems,
+    getActiveEventTemplates, getActiveBattleRules, getEventShopItems,
     purchaseEventShopItem, markAnnouncementRead,
     getUnreadAnnouncements, getTimeToNextCycle,
     getEventTimeRemaining, recordBattleResult,
   } = useWorldEventStore();
-  const { startBattle, lineup, player, addCoins, addGems } = useGameStore();
+  const { startEventBattle, lineup, player, addCoins, addGems } = useGameStore();
 
   const [activeTab, setActiveTab] = useState<EventTab>('overview');
   const [countdown, setCountdown] = useState('');
@@ -89,7 +90,16 @@ export default function WorldEvent() {
 
   const handleBattleSpecialEnemy = useCallback((enemy: WorldEventSpecialEnemy, template: WorldEventTemplate) => {
     if (lineup.length === 0) return;
-    const result = startBattle(100);
+    const enemyAnimal = createEventEnemyAnimal(enemy);
+    const battleRules = getActiveBattleRules();
+    const result = startEventBattle(
+      [enemyAnimal],
+      battleRules,
+      enemy.name,
+      enemy.emoji,
+      template.bonusRewardMultiplier,
+      0,
+    );
     if (result.success) {
       const eventResult = recordBattleResult(result.isWin ?? false, enemy.id);
       if (result.isWin) {
@@ -98,7 +108,7 @@ export default function WorldEvent() {
       }
       navigate(`/battle/${result.battleRecord!.id}`);
     }
-  }, [lineup, startBattle, recordBattleResult, addCoins, addGems, navigate]);
+  }, [lineup, startEventBattle, getActiveBattleRules, recordBattleResult, addCoins, addGems, navigate]);
 
   const handlePurchase = useCallback((itemId: string) => {
     const result = purchaseEventShopItem(itemId);

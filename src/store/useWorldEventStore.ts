@@ -22,6 +22,10 @@ import {
   saveToLocalStorage,
 } from '@/utils/save';
 import { useGameStore } from '@/store/useGameStore';
+import { getAnimalTemplate } from '@/data/animals';
+import { getPartTemplate, rollPartQuality } from '@/data/parts';
+import { getSkillTemplate } from '@/data/skills';
+import { getMaterialTemplate } from '@/data/materials';
 
 const SAVE_KEY = 'neon_colosseum_world_event_v1';
 
@@ -249,9 +253,6 @@ export const useWorldEventStore = create<WorldEventState>((set, get) => ({
     if (purchased >= item.stock) return { success: false, message: '库存不足' };
     const gameStore = useGameStore.getState();
     if (item.currency === 'eventTokens') {
-      if (gameStore.player.coins < item.cost && get().eventTokens < item.cost) {
-        if (get().eventTokens < item.cost) return { success: false, message: '事件代币不足' };
-      }
       if (get().eventTokens < item.cost) return { success: false, message: '事件代币不足' };
       set(state => ({
         eventTokens: state.eventTokens - item.cost,
@@ -280,6 +281,54 @@ export const useWorldEventStore = create<WorldEventState>((set, get) => ({
         ),
       }));
     }
+
+    if (item.itemType === 'animal') {
+      const template = getAnimalTemplate(item.templateId);
+      if (template) {
+        const animal = {
+          id: generateId('animal'),
+          templateId: template.id,
+          name: template.name,
+          rarity: item.rarity as 1 | 2 | 3 | 4 | 5,
+          level: 1,
+          starLevel: 1 as any,
+          breakthroughTier: 0 as any,
+          parts: [],
+          skills: [],
+          exp: 0,
+          expToNext: 100,
+        };
+        gameStore.addAnimal(animal);
+      }
+    } else if (item.itemType === 'part') {
+      const template = getPartTemplate(item.templateId);
+      if (template) {
+        const part = {
+          ...template,
+          id: generateId('part'),
+          templateId: template.id,
+          quality: rollPartQuality(item.rarity),
+          setId: template.setId,
+        };
+        gameStore.addPart(part);
+      }
+    } else if (item.itemType === 'skill') {
+      const template = getSkillTemplate(item.templateId);
+      if (template) {
+        const skill = {
+          ...template,
+          id: generateId('skill'),
+          templateId: template.id,
+        };
+        gameStore.addSkill(skill);
+      }
+    } else if (item.itemType === 'material') {
+      const template = getMaterialTemplate(item.templateId);
+      if (template) {
+        gameStore.addMaterials([{ templateId: template.id, count: 1 }]);
+      }
+    }
+
     get().saveWorldEventData();
     return { success: true, message: `成功购买 ${item.name}` };
   },

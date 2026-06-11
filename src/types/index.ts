@@ -355,7 +355,7 @@ export interface BattleSkill {
 }
 
 export interface BattleBuff {
-  stat: 'atk' | 'def' | 'spd' | 'crit';
+  stat: 'atk' | 'def' | 'spd' | 'crit' | 'healEff';
   value: number;
   remainingTurns: number;
 }

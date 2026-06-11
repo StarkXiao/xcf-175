@@ -123,6 +123,11 @@ export const createBattleUnit = (
   const template = getAnimalTemplate(animal.templateId);
   const stats = calculateAnimalStats(animal, bondBonuses);
 
+  const eventOverride = (animal as any)._eventEnemyOverride as import('@/types').WorldEventSpecialEnemy | undefined;
+  const effectiveStats = eventOverride
+    ? { hp: eventOverride.baseHp, atk: eventOverride.baseAtk, def: eventOverride.baseDef, spd: eventOverride.baseSpd }
+    : stats;
+
   const allPassives: PassiveEffect[] = [];
   const allComboTriggers: ComboTrigger[] = [];
 
@@ -230,17 +235,19 @@ export const createBattleUnit = (
   const bondCritBonus = bondBonuses?.crit || 0;
   const totalCritBonus = setCritBonus + bondCritBonus;
 
+  const eventEmoji = eventOverride?.emoji;
+  const eventElement = eventOverride?.element;
   return {
     id: generateId('unit'),
     animalId: animal.id,
-    name: template?.name || animal.name,
-    emoji: template?.emoji || '❓',
-    element: template?.element || 'dark',
-    maxHp: stats.hp,
-    currentHp: stats.hp,
-    atk: stats.atk,
-    def: stats.def,
-    spd: stats.spd,
+    name: eventOverride?.name || template?.name || animal.name,
+    emoji: eventEmoji || template?.emoji || '❓',
+    element: eventElement || template?.element || 'dark',
+    maxHp: effectiveStats.hp,
+    currentHp: effectiveStats.hp,
+    atk: effectiveStats.atk,
+    def: effectiveStats.def,
+    spd: effectiveStats.spd,
     skills,
     isAlive: true,
     side,
@@ -280,6 +287,40 @@ export const createEnemyAnimal = (templateId: string, level: number, rarity: num
       { skillId: 'skill_claw', level: 1 },
     ],
   };
+};
+
+export const RARITY_NUMBER_MAP: Record<string, 1 | 2 | 3 | 4 | 5> = {
+  common: 1,
+  rare: 2,
+  epic: 3,
+  legendary: 4,
+};
+
+export const createEventEnemyAnimal = (enemy: import('@/types').WorldEventSpecialEnemy): Animal => {
+  const rarityNum = RARITY_NUMBER_MAP[enemy.rarity] || 3;
+  const estimatedLevel = Math.max(1, Math.floor(enemy.baseHp / 100));
+  const validSkills = enemy.skills
+    .map(sid => getSkillTemplate(sid))
+    .filter(Boolean)
+    .map(s => ({ skillId: s.id, level: Math.ceil(rarityNum / 2) }));
+  const fallbackSkills = validSkills.length > 0 ? validSkills : [
+    { skillId: 'skill_bite', level: 1 },
+    { skillId: 'skill_claw', level: 1 },
+  ];
+  return {
+    id: generateId('event_enemy'),
+    templateId: `event_${enemy.id}`,
+    name: enemy.name,
+    level: estimatedLevel,
+    starLevel: (rarityNum >= 4 ? 3 : rarityNum >= 3 ? 2 : 1) as StarLevel,
+    breakthroughTier: (rarityNum >= 4 ? 1 : 0) as BreakthroughTier,
+    exp: 0,
+    expToNext: 100 * estimatedLevel,
+    rarity: rarityNum,
+    parts: [],
+    skills: fallbackSkills,
+    _eventEnemyOverride: enemy,
+  } as Animal;
 };
 
 export const generateEnemyTeam = (playerAvgLevel: number, dynamicContext?: DynamicOpponentContext, opponentDifficultyOverride?: 'easy' | 'normal' | 'hard') => {
@@ -1666,7 +1707,8 @@ export const simulateFullBattleWithCustomEnemies = (
   betAmount: number,
   lineupConfig: LineupConfig | undefined,
   customEnemyConfig: CustomEnemyBattleConfig,
-  allOwnedTemplateIds?: Set<string>
+  allOwnedTemplateIds?: Set<string>,
+  battleRules?: import('@/types').WorldEventBattleRuleConfig[]
 ): {
   playerUnits: BattleUnit[];
   enemyUnits: BattleUnit[];
@@ -1701,7 +1743,60 @@ export const simulateFullBattleWithCustomEnemies = (
   const initialPlayerUnits = JSON.parse(JSON.stringify(playerUnits));
   const initialEnemyUnits = JSON.parse(JSON.stringify(enemyUnits));
 
+  if (battleRules && battleRules.length > 0) {
+    const allUnits = [...playerUnits, ...enemyUnits];
+    for (const rule of battleRules) {
+      if (rule.atkMultiplier) {
+        for (const unit of allUnits) {
+          unit.atk = Math.floor(unit.atk * rule.atkMultiplier!);
+          unit.maxHp = Math.floor(unit.maxHp * (rule.hpMultiplier || 1));
+          unit.currentHp = unit.maxHp;
+        }
+      }
+      if (rule.defMultiplier) {
+        for (const unit of allUnits) {
+          unit.def = Math.floor(unit.def * rule.defMultiplier!);
+        }
+      }
+      if (rule.spdMultiplier) {
+        for (const unit of allUnits) {
+          unit.spd = Math.floor(unit.spd * rule.spdMultiplier!);
+        }
+      }
+      if (rule.critBonus) {
+        for (const unit of allUnits) {
+          const existingCritBuff = unit.buffs.find(b => b.stat === 'crit');
+          if (existingCritBuff) {
+            existingCritBuff.value += rule.critBonus!;
+          } else {
+            unit.buffs.push({ stat: 'crit', value: rule.critBonus!, remainingTurns: -1 });
+          }
+        }
+      }
+      if (rule.healMultiplier && rule.healMultiplier < 1) {
+        for (const unit of allUnits) {
+          const existingHealDebuff = unit.buffs.find(b => b.stat === 'healEff');
+          if (existingHealDebuff) {
+            existingHealDebuff.value = Math.min(existingHealDebuff.value, Math.floor((1 - rule.healMultiplier!) * 100));
+          } else {
+            unit.buffs.push({ stat: 'healEff', value: -Math.floor((1 - rule.healMultiplier!) * 100), remainingTurns: -1 });
+          }
+        }
+      }
+    }
+  }
+
   const fullBattleLog: BattleLogEntry[] = [];
+
+  if (battleRules && battleRules.length > 0) {
+    for (const rule of battleRules) {
+      fullBattleLog.push({
+        timestamp: Date.now(),
+        type: 'bond',
+        message: `${rule.emoji} 限时规则【${rule.name}】生效！${rule.description}`,
+      });
+    }
+  }
 
   if (hasBondBonus2) {
     const bonusParts: string[] = [];

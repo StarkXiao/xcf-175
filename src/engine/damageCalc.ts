@@ -121,7 +121,11 @@ export const calculateHeal = (
   target: BattleUnit,
   healPercent: number
 ): number => {
-  const healAmount = Math.floor(target.maxHp * (healPercent / 100));
+  const healEffBuff = target.buffs
+    .filter(b => b.stat === 'healEff')
+    .reduce((sum, b) => sum + b.value, 0);
+  const effectiveHealPercent = healPercent * (1 + healEffBuff / 100);
+  const healAmount = Math.floor(target.maxHp * (effectiveHealPercent / 100));
   return clamp(healAmount, 1, target.maxHp - target.currentHp);
 };
 
