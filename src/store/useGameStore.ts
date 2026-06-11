@@ -35,6 +35,7 @@ import type {
   CodexSaveData,
   CodexMilestone,
   PlayerData,
+  InventoryItem,
 } from '@/types';
 import { ANIMAL_TEMPLATES } from '@/data/animals';
 import { PART_TEMPLATES } from '@/data/parts';
@@ -693,11 +694,37 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   addPart: (part: Part) => {
     set(state => ({ ownedParts: [...state.ownedParts, part] }));
+    const data = loadFromLocalStorage();
+    if (data?.inventoryData) {
+      const newInventoryItem: InventoryItem = {
+        id: generateId('inv'),
+        itemType: 'part',
+        itemId: part.id,
+        isLocked: false,
+        isFavorite: false,
+        acquiredAt: Date.now(),
+      };
+      data.inventoryData.items.push(newInventoryItem);
+      saveToLocalStorage(data);
+    }
     get().saveGame();
   },
 
   addSkill: (skill: Skill) => {
     set(state => ({ ownedSkills: [...state.ownedSkills, skill] }));
+    const data = loadFromLocalStorage();
+    if (data?.inventoryData) {
+      const newInventoryItem: InventoryItem = {
+        id: generateId('inv'),
+        itemType: 'skill',
+        itemId: skill.id,
+        isLocked: false,
+        isFavorite: false,
+        acquiredAt: Date.now(),
+      };
+      data.inventoryData.items.push(newInventoryItem);
+      saveToLocalStorage(data);
+    }
     get().saveGame();
   },
 
@@ -2028,6 +2055,23 @@ export const useGameStore = create<GameState>((set, get) => ({
     set(state => ({
       ownedMaterials: [...state.ownedMaterials, ...newMaterials],
     }));
+
+    const data = loadFromLocalStorage();
+    if (data?.inventoryData) {
+      newMaterials.forEach(material => {
+        const newInventoryItem: InventoryItem = {
+          id: generateId('inv'),
+          itemType: 'material',
+          itemId: material.id,
+          isLocked: false,
+          isFavorite: false,
+          acquiredAt: Date.now(),
+        };
+        data.inventoryData.items.push(newInventoryItem);
+      });
+      saveToLocalStorage(data);
+    }
+
     get().saveGame();
   },
 

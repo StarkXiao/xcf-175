@@ -374,12 +374,16 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
         return false;
       }
 
-      if (filters.slot && filters.slot !== 'all' && isPart(itemData) && itemData.slot !== filters.slot) {
-        return false;
+      if (filters.slot && filters.slot !== 'all') {
+        if (!isPart(itemData) || itemData.slot !== filters.slot) {
+          return false;
+        }
       }
 
-      if (filters.skillType && filters.skillType !== 'all' && isSkill(itemData) && itemData.type !== filters.skillType) {
-        return false;
+      if (filters.skillType && filters.skillType !== 'all') {
+        if (!isSkill(itemData) || itemData.type !== filters.skillType) {
+          return false;
+        }
       }
 
       return true;
